@@ -8,22 +8,23 @@
 #include <cstring>
 #include <cassert>
 
-#define LF_FILE_OK                     0
+#define LF_OK                                0
+#define LF_NONE                             -1
 
-#define LF_FILE_LOCKED                 1
-#define LF_FILE_READ                   2
-#define LF_FILE_WRITE                  4
+#define LF_FILE_LOCKED                       1
+#define LF_FILE_READ                         2
+#define LF_FILE_WRITE                        4
 
-#define LF_FILE_ERROR_NOT_FOUND       -2
-#define LF_FILE_ERROR_ALREADY_OPENED  -3
-#define LF_FILE_ERROR_TABLE_ENDED     -4
-#define LF_FILE_ERROR_NAME_NULL       -5
-#define LF_FILE_ERROR_NAME_TOO_LONG   -6
-#define LF_FILE_ERROR_WRONG_MODE      -7
-#define LF_FILE_ERROR_SPACE_ENDED     -8
-#define LF_FILE_ERROR_SYSTEM_SECTION  -9
+#define LF_ERROR_DATA_TABLE_ENDED           -2
+#define LF_ERROR_SPACE_ENDED                -3
+#define LF_ERROR_SYSTEM_SECTION             -4
 
-#define LF_NONE                       -1
+#define LF_ERROR_FILE_NOT_FOUND             -5
+#define LF_ERROR_FILE_ALREADY_OPENED        -6
+#define LF_ERROR_FILE_NAME_NULL             -7
+#define LF_ERROR_FILE_NAME_TOO_LONG         -8
+#define LF_ERROR_FILE_WRONG_MODE            -9
+#define LF_ERROR_FILE_READ_SIZE_OVERFLOW    -10
 
 // tail addition
 static inline void acquire_next_free(int32_t* table_next, int32_t* table_prev, int32_t& last_busy, int32_t& first_free) {
@@ -108,6 +109,7 @@ namespace lofat {
         static constexpr uint32_t SYSTEM_USED_SIZE = FS_INFO_SIZE + FILEINFO_ARRAY_SIZE + FILENAME_TABLE_SIZE + DATA_TABLE_SIZE;
         static constexpr uint32_t SYSTEM_USED_CLUSTERS = SYSTEM_USED_SIZE / CLUSTER_SIZE + ((SYSTEM_USED_SIZE % CLUSTER_SIZE) > 0);
         static constexpr uint32_t LAST_SYSTEM_CLUSTER = SYSTEM_USED_CLUSTERS - 1;
+        static_assert(SYSTEM_USED_CLUSTERS < CLUSTER_COUNT);
         fs() {
             this->reset();
         }
@@ -132,15 +134,15 @@ namespace lofat {
         }
         int32_t open(const char* filename, char mode) {
             if (filename == nullptr) {
-                return LF_FILE_ERROR_NAME_NULL;
+                return LF_ERROR_FILE_NAME_NULL;
             }
             size_t filename_len = strlen(filename);
             if (filename_len > NAME_LENGTH - 1) {
-                return LF_FILE_ERROR_NAME_TOO_LONG;
+                return LF_ERROR_FILE_NAME_TOO_LONG;
             }
             int32_t fd = this->find(filename);
             if (fd >= 0 && fd < SYSTEM_USED_CLUSTERS) {
-                return LF_FILE_ERROR_SYSTEM_SECTION;
+                return LF_ERROR_SYSTEM_SECTION;
             }
             if (mode == 'r') {
                 if (fd >= 0) {
@@ -152,15 +154,15 @@ namespace lofat {
                 if (fd >= 0) {
                     // remove existing
                     this->remove(fd);
-                    fd = LF_FILE_ERROR_NOT_FOUND;
+                    fd = LF_ERROR_FILE_NOT_FOUND;
                 }
-                if (fd == LF_FILE_ERROR_ALREADY_OPENED) {
-                    return LF_FILE_ERROR_ALREADY_OPENED;
+                if (fd == LF_ERROR_FILE_ALREADY_OPENED) {
+                    return LF_ERROR_FILE_ALREADY_OPENED;
                 }
                 if (_data_table_free_head == LF_NONE) {
-                    return LF_FILE_ERROR_SPACE_ENDED;
+                    return LF_ERROR_SPACE_ENDED;
                 }
-                assert(fd == LF_FILE_ERROR_NOT_FOUND);
+                assert(fd == LF_ERROR_FILE_NOT_FOUND);
                 // LF_FILE_ERROR_NOT_FOUND - create new
                 acquire_next_free(_filename_table_next, _filename_table_prev, _filename_table_busy_tail, _filename_table_free_head);
                 fd = _filename_table_busy_tail;
@@ -177,18 +179,40 @@ namespace lofat {
                 _fileinfos[fd].mtime = 0;
                 return fd;
             }
-            return LF_FILE_ERROR_WRONG_MODE;
+            return LF_ERROR_FILE_WRONG_MODE;
         }
         int32_t read(uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd) {
-#if 0
-            int32_t cluster_count = _fileinfos[fd].size / CLUSTER_SIZE + static_cast<int>((_fileinfos[fd].size % CLUSTER_SIZE) > 0);
-            int32_t remain_size = _fileinfos[fd].size;
-            for (int i = 0; i < cluster_count; i++) {
-                // TODO
-                remain_size -= CLUSTER_SIZE;
+            if (fd >= 0 && fd < SYSTEM_USED_CLUSTERS) {
+                return LF_ERROR_SYSTEM_SECTION;
             }
-#endif
-            return -1;
+            if (fd > LAST_SYSTEM_CLUSTER) {
+                fileinfo<NAME_LENGTH>& fdi = _fileinfos[fd];
+                uint32_t read_size = elem_size * count;
+                if (read_size > fdi.size) {
+                    return LF_ERROR_FILE_READ_SIZE_OVERFLOW;
+                }
+                uint32_t buf_offset = 0;
+                while (read_size > 0) {
+                    uint32_t mem_can_read = CLUSTER_SIZE - _fileinfos[fd].current_byte;
+                    if (mem_can_read == 0) {
+                        _fileinfos[fd].current_cluster = _data_table_next[_fileinfos[fd].current_cluster];
+                        _fileinfos[fd].current_byte = 0;
+                        mem_can_read = CLUSTER_SIZE;
+                    }
+                    if (mem_can_read > read_size) {
+                        mem_can_read = read_size;
+                    }
+                    //
+                    uint32_t offset = _fileinfos[fd].current_cluster * CLUSTER_SIZE + _fileinfos[fd].current_byte;
+                    memcpy(buf + buf_offset, &_data[offset], mem_can_read);
+                    //
+                    _fileinfos[fd].current_byte += mem_can_read;
+                    buf_offset += mem_can_read;
+                    read_size -= mem_can_read;
+                }
+                return LF_OK;
+            }
+            return LF_ERROR_FILE_NOT_FOUND;
         }
         int32_t write(uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd) {
             // always write new
@@ -200,7 +224,7 @@ namespace lofat {
                     // go to the next cluster
                     assert(_data_table_free_head != LF_NONE);
                     if (_data_table_free_head == LF_NONE) {
-                        return LF_FILE_ERROR_SPACE_ENDED;
+                        return LF_ERROR_SPACE_ENDED;
                     }
                     acquire_next_free(_data_table_next, _data_table_prev, _data_table_busy_tail, _data_table_free_head);
                     _fileinfos[fd].last_cluster = _data_table_busy_tail;
@@ -211,7 +235,9 @@ namespace lofat {
                     mem_can_write = total_write_size;
                 }
                 uint32_t offset = _fileinfos[fd].last_cluster * CLUSTER_SIZE + _fileinfos[fd].current_byte;
-                memcpy(_data + offset, buf + buf_offset, mem_can_write);
+                //
+                memcpy(&_data[offset], buf + buf_offset, mem_can_write);
+                //
                 _fileinfos[fd].current_byte += mem_can_write;
                 _fileinfos[fd].size += mem_can_write;
                 buf_offset += mem_can_write;
@@ -224,17 +250,20 @@ namespace lofat {
                 _fileinfos[fd].locked = 0;
                 _fileinfos[fd].current_cluster = _fileinfos[fd].first_cluster;
                 _fileinfos[fd].current_byte = 0;
-                return LF_FILE_OK;
+                return LF_OK;
             }
             return fd;
         }
         
         int32_t remove(const char* filename) {
             int32_t fd = this->find(filename);
-            if (fd >= LF_FILE_OK) {
+            if (fd >= LF_OK) {
                 return this->remove(fd);
             }
             return fd;
+        }
+        fileinfo<NAME_LENGTH> stat(int32_t fd) {
+            return _fileinfos[fd];
         }
     private:
         fileinfo<NAME_LENGTH> _fileinfos[CLUSTER_COUNT] = {};
@@ -283,7 +312,7 @@ namespace lofat {
                 }
                 busy_head = _filename_table_next[busy_head];
             }
-            return LF_FILE_ERROR_NOT_FOUND;
+            return LF_ERROR_FILE_NOT_FOUND;
         }
         int32_t remove(int fd) {
             // busy clusters handle
@@ -294,7 +323,7 @@ namespace lofat {
             free_busy_range(_filename_table_next, _filename_table_prev, fd, fd, _filename_table_busy_tail, _filename_table_free_head);
             // reset properties
             _fileinfos[fd].reset();
-            return LF_FILE_OK;
+            return LF_OK;
         }
     };
 #pragma pack(pop)
@@ -302,8 +331,8 @@ namespace lofat {
 
 int main()
 {
-    const uint32_t fs_cluster_size = 256;
-    const uint32_t fs_size = 8 * fs_cluster_size;
+    const uint32_t fs_cluster_size = 1024;
+    const uint32_t fs_size = 32 * fs_cluster_size;
     const uint32_t fs_filename_max_length = 32;
     std::unique_ptr<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>> fat_test_ptr = std::make_unique<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>>();
     const int max_user_file_count = fat_test_ptr->CLUSTER_COUNT - fat_test_ptr->SYSTEM_USED_CLUSTERS;
@@ -339,10 +368,28 @@ int main()
     }
     {
         int32_t test_fd = fat_test_ptr->open("three_and_half.txt", 'w');
-        uint8_t test_buf[fs_cluster_size * 3 + fs_cluster_size / 2] = { 0 };
-        memset(test_buf, 2, fs_cluster_size * 3);
-        fat_test_ptr->write(test_buf, 1, fs_cluster_size * 3 + fs_cluster_size / 2, test_fd);
+        uint8_t test_buf[fs_cluster_size / 2] = { 0 };
+        memset(test_buf, 2, fs_cluster_size / 2);
+        fat_test_ptr->write(test_buf, 1, fs_cluster_size / 2, test_fd);
         int32_t close_res = fat_test_ptr->close(test_fd);
+    }
+    {
+        char text[1536] = { '\0' };
+        int32_t switcher = 1536 / ('z' - 'a' + 1);
+        for (int i = 0; i < 1536; i++) {
+            text[i] = 'a' + i / switcher;
+        }
+        int32_t text_fd = fat_test_ptr->open("saved_text.txt", 'w');
+        fat_test_ptr->write((uint8_t*)(text), 1, sizeof(text), text_fd);
+        fat_test_ptr->close(text_fd);
+    }
+    {
+        int32_t text_fd = fat_test_ptr->open("saved_text.txt", 'r');
+        lofat::fileinfo<fs_filename_max_length> file_info = fat_test_ptr->stat(text_fd);
+        char* text = new char[file_info.size];
+        fat_test_ptr->read((uint8_t*)text, 1, file_info.size, text_fd);
+        fat_test_ptr->close(text_fd);
+        delete[] text;
     }
     // TODO: MASSIVE TESTING OF EVERYTHING
     // NEED A LOT OF RANDOM TESTS WITH CHECKING OF CORRECTNESS OVER MILLIONS OF WRITINGS
