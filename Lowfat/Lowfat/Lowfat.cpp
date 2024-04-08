@@ -63,6 +63,32 @@ static inline void free_busy_range(int32_t* table_next, int32_t* table_prev, int
 }
 
 namespace lofat {
+    static constexpr uint32_t CRC_CCIT32 = 0x04C11DB7;
+    static constexpr uint32_t CRC_CCIT32_REV = 0xEDB88320;
+
+    template<uint32_t P>
+    struct crc32 {
+        crc32() {
+            for (uint32_t i = 0; i < 256; i++) {
+                uint32_t cur = i;
+                for (uint32_t j = 0; j < 8; j++) {
+                    cur = (cur & 1) ? ((cur >> 1) ^ P) : (cur >> 1);
+                }
+                table[i] = cur;
+            }
+        }
+        uint32_t update(uint8_t* data, uint32_t size, uint32_t crc) const {
+            for (uint32_t i = 0; i < size; i++) {
+                crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
+            }
+            return crc ^ 0xFFFFFFFF;
+        }
+    private:
+        uint32_t table[256] = { 0 };
+    };
+
+    static const crc32<CRC_CCIT32_REV> s_crc32;
+
 #pragma pack(push, 1)
     template<int32_t NAME_LENGTH>
     struct fileinfo {
@@ -74,6 +100,9 @@ namespace lofat {
         uint32_t current_cluster = 0;
         uint32_t current_byte = 0;
         uint64_t mtime = 0;
+        uint32_t fcrc32 = 0x0;
+        //
+        uint32_t reserved[8];
 
         void reset() {
             memset(name, '\0', NAME_LENGTH * sizeof(char));
@@ -83,6 +112,8 @@ namespace lofat {
             locked = 0;
             current_cluster = LF_NONE;
             current_byte = 0;
+            mtime = 0;
+            fcrc32 = 0x0;
         }
     };
     struct fsinfo_t {
@@ -393,5 +424,8 @@ int main()
     }
     // TODO: MASSIVE TESTING OF EVERYTHING
     // NEED A LOT OF RANDOM TESTS WITH CHECKING OF CORRECTNESS OVER MILLIONS OF WRITINGS
+    const char test_abc[] = "ABC";
+    uint32_t crc_test_3 = lofat::s_crc32.update((uint8_t*)test_abc, 3, 0xFFFFFFFF); // start from filled to do not shift initial crc zeros
+    printf("ABC remainder lookuped: %#010x\n", crc_test_3);
     return 0;
 }
