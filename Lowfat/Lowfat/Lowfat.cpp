@@ -7,6 +7,7 @@
 #include <memory>
 #include <cstring>
 #include <cassert>
+#include <bitset>
 
 #define LF_OK                                0
 #define LF_NONE                             -1
@@ -100,7 +101,7 @@ namespace lofat {
         uint32_t current_cluster = 0;
         uint32_t current_byte = 0;
         uint64_t mtime = 0;
-        uint32_t fcrc32 = 0x0;
+        uint32_t fcrc32 = 0xFFFFFFFF;
         //
         uint32_t reserved[8];
 
@@ -113,7 +114,7 @@ namespace lofat {
             current_cluster = LF_NONE;
             current_byte = 0;
             mtime = 0;
-            fcrc32 = 0x0;
+            fcrc32 = 0xFFFFFFFF;
         }
     };
     struct fsinfo_t {
@@ -274,6 +275,7 @@ namespace lofat {
                 buf_offset += mem_can_write;
                 total_write_size -= mem_can_write;
             }
+            _fileinfos[fd].fcrc32 = s_crc32.update(buf, elem_size * count, _fileinfos[fd].fcrc32);
             return elem_size * count;
         }
         int32_t close(int32_t fd) {
@@ -425,7 +427,19 @@ int main()
     // TODO: MASSIVE TESTING OF EVERYTHING
     // NEED A LOT OF RANDOM TESTS WITH CHECKING OF CORRECTNESS OVER MILLIONS OF WRITINGS
     const char test_abc[] = "ABC";
+    const char test_d[] = "D";
     uint32_t crc_test_3 = lofat::s_crc32.update((uint8_t*)test_abc, 3, 0xFFFFFFFF); // start from filled to do not shift initial crc zeros
     printf("ABC remainder lookuped: %#010x\n", crc_test_3);
+    crc_test_3 = lofat::s_crc32.update((uint8_t*)test_d, 1, crc_test_3);
+    printf("ABCD remainder lookuped: %#010x\n", crc_test_3);
+    {
+        int32_t abc_fd = fat_test_ptr->open("saved_text.txt", 'w');
+        fat_test_ptr->write((uint8_t*)test_abc, 3, 1, abc_fd);
+        fat_test_ptr->write((uint8_t*)test_d, 1, 1, abc_fd);
+        fat_test_ptr->close(abc_fd);
+        lofat::fileinfo<fs_filename_max_length> fst = fat_test_ptr->stat(abc_fd);
+        printf("File remainder lookuped: %#010x\n", fst.fcrc32);
+    }
+
     return 0;
 }
