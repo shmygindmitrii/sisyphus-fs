@@ -514,16 +514,16 @@ uint32_t fill_random_byte_buffer_and_calc_crc32(Buf<byte>& mem) {
 }
 
 struct MemAmount_t {
-    uint32_t megabytes = 0;
-    uint32_t kilobytes = 0;
-    uint32_t bytes = 0;
+    size_t megabytes = 0;
+    size_t kilobytes = 0;
+    size_t bytes = 0;
 
-    MemAmount_t& operator+=(uint32_t _bytes) {
+    MemAmount_t& operator+=(size_t _bytes) {
         bytes += _bytes;
-        uint32_t kbytes = bytes / 1024;
+        size_t kbytes = bytes / 1024;
         bytes -= kbytes * 1024;
         kilobytes += kbytes;
-        uint32_t mbytes = kilobytes / 1024;
+        size_t mbytes = kilobytes / 1024;
         kilobytes -= mbytes * 1024;
         megabytes += mbytes;
         return *this;
@@ -630,7 +630,7 @@ void test_fs_readback(lofat::fs<TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH>& filesys,
     }
     uint32_t mem_busy = filesys.CLUSTER_COUNT * filesys.CLUSTER_SIZE - filesys.free_mem_size();
     assert(mem_busy == filesys.SYSTEM_USED_SIZE);
-    printf("File system randomized RW test finished: %u MB, %u KB, %u bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, TOTAL_SIZE);
+    printf("File system randomized RW test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, TOTAL_SIZE);
 }
 
 void test_crc32() {
@@ -720,12 +720,12 @@ void test_simple_rw() {
 }
 
 void test_randomized_rw() {
-    const uint32_t fs_cluster_size = 1024;
-    const uint32_t fs_size = 32 * fs_cluster_size;
+    const uint32_t fs_cluster_size = 4 * 1024;
+    const uint32_t fs_size = 1024 * fs_cluster_size;
     const uint32_t fs_filename_max_length = 32;
     std::unique_ptr<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>> fat_test_ptr = std::make_unique<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>>();
 
-    test_fs_readback(*fat_test_ptr, 60.0f);
+    test_fs_readback(*fat_test_ptr, 240.0f);
 }
 
 int main()
