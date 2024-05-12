@@ -9,6 +9,7 @@
 #include <cassert>
 #include <bitset>
 #include <ctime>
+#include <chrono>
 
 typedef uint8_t byte;
 
@@ -116,7 +117,7 @@ namespace lofat {
         uint32_t current_cluster = 0;
         uint32_t current_byte = 0;
         uint64_t mtime = 0;
-        uint32_t fcrc32 = CRC32_DEFAULT_VALUE;
+        uint32_t crc32 = CRC32_DEFAULT_VALUE;
         //
         uint32_t reserved[8];
 
@@ -129,13 +130,14 @@ namespace lofat {
             current_cluster = LF_NONE;
             current_byte = 0;
             mtime = 0;
-            fcrc32 = CRC32_DEFAULT_VALUE;
+            crc32 = CRC32_DEFAULT_VALUE;
         }
     };
     struct fsinfo_t {
         uint32_t total_size;
         uint32_t cluster_size;
         uint32_t name_max_length;
+        uint32_t file_count;
         uint32_t filename_busy_head;
         uint32_t filename_free_head;
         uint32_t data_busy_tail;
@@ -150,7 +152,7 @@ namespace lofat {
     public:
         struct filename_t {
             static constexpr uint32_t size = _NAME_LENGTH;
-            char name[size] = { 0 };
+            char name[size + 1] = { 0 };
 
             char* data() {
                 return &name[0];
@@ -173,7 +175,7 @@ namespace lofat {
         }
         void prepare_to_dump() {
             uint32_t offset = 0;
-            fsinfo_t fsinfo { TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH, 
+            fsinfo_t fsinfo { TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH, _file_count,
                 _filename_table_busy_tail, _filename_table_free_head,
                 _data_table_busy_tail, _data_table_free_head };
             memcpy(_data, &fsinfo, FS_INFO_SIZE);
@@ -236,6 +238,7 @@ namespace lofat {
                 _fileinfos[fd].current_cluster = _data_table_busy_tail;
                 _fileinfos[fd].current_byte = 0;
                 _fileinfos[fd].mtime = 0;
+                _file_count++;
                 return fd;
             }
             return LF_ERROR_FILE_WRONG_MODE;
@@ -303,7 +306,7 @@ namespace lofat {
                 buf_offset += mem_can_write;
                 total_write_size -= mem_can_write;
             }
-            _fileinfos[fd].fcrc32 = s_crc32.update(buf, elem_size * count, _fileinfos[fd].fcrc32);
+            _fileinfos[fd].crc32 = s_crc32.update(buf, elem_size * count, _fileinfos[fd].crc32);
             _used_memory += elem_size * count;
             return count;
         }
@@ -312,6 +315,10 @@ namespace lofat {
                 _fileinfos[fd].locked = 0;
                 _fileinfos[fd].current_cluster = _fileinfos[fd].first_cluster;
                 _fileinfos[fd].current_byte = 0;
+                assert(_fileinfos[fd].size != 0);
+#if _DEBUG
+                printf("Close descriptor %d of size %u and crc32 = %u\n", fd, _fileinfos[fd].size, _fileinfos[fd].crc32);
+#endif
                 return LF_OK;
             }
             return fd;
@@ -364,14 +371,23 @@ namespace lofat {
             // busy clusters handle
             int32_t first_cluster = _fileinfos[fd].first_cluster;
             int32_t last_cluster = _fileinfos[fd].last_cluster;
-            _used_cluster_count -= calculate_range_length(_data_table_next, first_cluster, last_cluster);
+            uint32_t freed_clusters = calculate_range_length(_data_table_next, first_cluster, last_cluster);
+            _used_cluster_count -= freed_clusters;
             free_busy_range(_data_table_next, _data_table_prev, first_cluster, last_cluster, _data_table_busy_tail, _data_table_free_head);
             // 
             free_busy_range(_filename_table_next, _filename_table_prev, fd, fd, _filename_table_busy_tail, _filename_table_free_head);
             // reset properties
             _used_memory -= _fileinfos[fd].size;
+#if _DEBUG
+            printf("Remove file '%s' of size %u\n", _fileinfos[fd].name, _fileinfos[fd].size);
+#endif
             _fileinfos[fd].reset();
-            return LF_OK;
+            _file_count--;
+            return freed_clusters;
+        }
+
+        uint32_t file_count() const {
+            return _file_count;
         }
     private:
         fileinfo<NAME_LENGTH> _fileinfos[CLUSTER_COUNT] = {};
@@ -379,6 +395,7 @@ namespace lofat {
         int32_t _filename_table_prev[CLUSTER_COUNT] = { 0 };
         int32_t _filename_table_busy_tail = LF_NONE;
         int32_t _filename_table_free_head = 0;
+        uint32_t _file_count = 0;
         // HERE IS HOW DATA BEHAVES
         uint8_t _data[TOTAL_SIZE] = { 0 };
         int32_t _data_table_next[CLUSTER_COUNT] = { 0 };
@@ -496,68 +513,154 @@ uint32_t fill_random_byte_buffer_and_calc_crc32(Buf<byte>& mem) {
     return lofat::s_crc32.update(mem.data(), mem.ulen(), CRC32_DEFAULT_VALUE);
 }
 
+struct MemAmount_t {
+    uint32_t megabytes = 0;
+    uint32_t kilobytes = 0;
+    uint32_t bytes = 0;
+
+    MemAmount_t& operator+=(uint32_t _bytes) {
+        bytes += _bytes;
+        uint32_t kbytes = bytes / 1024;
+        bytes -= kbytes * 1024;
+        kilobytes += kbytes;
+        uint32_t mbytes = kilobytes / 1024;
+        kilobytes -= mbytes * 1024;
+        megabytes += mbytes;
+        return *this;
+    }
+};
+
 template<uint32_t TOTAL_SIZE,
          uint32_t CLUSTER_SIZE,
          uint32_t NAME_LENGTH>
-void test_fs_readback(lofat::fs<TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH>& filesys, uint32_t file_max_size) {
+void test_fs_readback(lofat::fs<TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH>& filesys, double test_period) {
     using fsclass = typename lofat::fs<TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH>;
     using filename_t = typename lofat::fs<TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH>::filename_t;
+    using fileinfo_t = typename lofat::fileinfo<NAME_LENGTH>;
     srand(time(nullptr));
     uint32_t file_idx = 0;
     std::vector<filename_t> filenames;
     std::vector<uint32_t> crcs;
-    for (int repeat = 0; repeat < 2; repeat++) {
-        size_t cur_file_size = rand() % file_max_size;
-        while (filesys.free_available_mem_size() > cur_file_size) {
-            Buf<byte> mem(cur_file_size);
-            const uint32_t fcrc32 = fill_random_byte_buffer_and_calc_crc32(mem);
-            filename_t filename;
-            snprintf(filename.data(), filename.size, "test_file_%u.bin", file_idx);
+    const auto start{ std::chrono::steady_clock::now() };
+    auto end{ std::chrono::steady_clock::now() };
+    const std::chrono::duration<double> elapsed_seconds{ end - start };
+    std::chrono::duration<double> elapsed = end - start;
+    uint32_t cur_empty_file_idx = 0;
+    uint32_t cycle_idx = 0;
+    uint32_t writes_count = 0;
+    MemAmount_t rewritten_memory{};
+    //uint32_t 
+    while (elapsed.count() < test_period) {
+        size_t available = filesys.free_available_mem_size(); // not tight, free clusters * cluster_size
+        if (available) {
+            // have a place to write
+            size_t random_filesize = (rand() % TOTAL_SIZE) % (available - CLUSTER_SIZE / 4) + CLUSTER_SIZE / 4;
+            if (cur_empty_file_idx == crcs.size()) {
+                // push_back new one
+                crcs.push_back(0);
+                filenames.push_back(filename_t{});
+            }
+            Buf<byte> mem(random_filesize);
+            crcs[cur_empty_file_idx] = fill_random_byte_buffer_and_calc_crc32(mem);
+            filename_t& filename = filenames[cur_empty_file_idx];
+            snprintf(filename.data(), filename.size, "test_file_%u_%u.bin", cycle_idx, cur_empty_file_idx);
             int32_t fd = filesys.open(filename.data(), 'w');
             uint32_t written = filesys.write(mem.data(), mem.ulen(), 1, fd);
             filesys.close(fd);
             assert(written == 1);
-            filenames.push_back(filename);
-            crcs.push_back(fcrc32);
-            cur_file_size = rand() % file_max_size;
-        }
-        uint32_t files_to_check = filenames.size();
-        Buf<bool> flags(files_to_check);
-        memset(flags.data(), 0, files_to_check);
-        while (files_to_check != 0) {
-            // choose one file randomly, check and then remove it, while not empty
-            uint32_t file_idx = rand() % files_to_check;
-            uint32_t cur_file_idx = 0;
-            for (int i = 0; i < flags.ulen(); i++) {
-                if (!flags[i]) {
-                    if (cur_file_idx == file_idx) {
-                        // perform actions
-                        int fd = filesys.open(filenames[i].name, 'r');
-                        auto finfo = filesys.stat(fd);
-                        Buf<byte> file_content(finfo.size);
-                        filesys.read(file_content.data(), finfo.size, 1, fd);
-                        const uint32_t fcrc32 = lofat::s_crc32.update(file_content.data(), file_content.ulen(), CRC32_DEFAULT_VALUE);
-                        assert(fcrc32 == finfo.fcrc32);
-                        filesys.close(fd);
-                        filesys.remove(fd);
-                        flags[i] = true;
-                        break;
-                    }
-                    cur_file_idx++;
+            fileinfo_t finfo = filesys.stat(fd);
+            assert(crcs[cur_empty_file_idx] == finfo.crc32);
+            rewritten_memory += mem.ulen();
+            cur_empty_file_idx++;
+            writes_count++;
+        } 
+        else {
+            // need to free place
+            uint32_t files_written = filesys.file_count();
+            uint32_t files_to_remove = (rand() % (files_written - 1)) + 1;
+#if _DEBUG
+            printf("Space finished, free procedure for %u files of %u \n", files_to_remove, files_written);
+#endif
+            for (uint32_t i = 0; i < files_to_remove; i++) {
+                // need a vector of filenames
+                uint32_t cur_file_idx = rand() % files_written;
+                int fd = filesys.open(filenames[cur_file_idx].data(), 'r');
+                assert(fd >= LF_OK);
+                fileinfo_t finfo = filesys.stat(fd);
+                Buf<byte> mem(finfo.size);
+                int32_t read = filesys.read(mem.data(), 1, mem.ulen(), fd);
+                filesys.close(fd);
+                uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), mem.ulen(), CRC32_DEFAULT_VALUE);
+                assert(test_crc32 == crcs[cur_file_idx] && test_crc32 == finfo.crc32);
+                uint32_t freed_clusters = filesys.remove(fd);
+                assert(freed_clusters == (mem.ulen() / CLUSTER_SIZE + (mem.ulen() % CLUSTER_SIZE > 0)));
+                //
+#if _DEBUG
+                printf("Removed '%s'\n", filenames[cur_file_idx].data());
+#endif
+                if (cur_file_idx != files_written - 1) {
+                    assert(strcmp(filenames[cur_file_idx].data(), filenames[cur_empty_file_idx - 1].data()) != 0);
+                    filenames[cur_file_idx] = filenames[files_written - 1];
+                    crcs[cur_file_idx] = crcs[files_written - 1];
                 }
+                filenames[files_written - 1] = {};
+                crcs[files_written - 1] = 0;
+                files_written--;
             }
-            files_to_check--;
+            cur_empty_file_idx -= files_to_remove;
         }
+        //
+        cycle_idx++;
+        //
+        end = std::chrono::steady_clock::now();
+        elapsed = end - start;
     }
-    assert(filesys.CLUSTER_COUNT * filesys.CLUSTER_SIZE - filesys.free_mem_size() == filesys.SYSTEM_USED_SIZE);
+    // remove remained files
+    for (uint32_t i = 0; i < cur_empty_file_idx; i++) {
+        int fd = filesys.open(filenames[i].data(), 'r');
+        assert(fd >= LF_OK);
+        fileinfo_t finfo = filesys.stat(fd);
+        Buf<byte> mem(finfo.size);
+        int32_t read = filesys.read(mem.data(), 1, mem.ulen(), fd);
+        filesys.close(fd);
+        uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), mem.ulen(), CRC32_DEFAULT_VALUE);
+        assert(test_crc32 == crcs[i] && test_crc32 == finfo.crc32);
+        uint32_t freed_clusters = filesys.remove(fd);
+        assert(freed_clusters == (mem.ulen() / CLUSTER_SIZE + (mem.ulen() % CLUSTER_SIZE > 0)));
+    }
+    uint32_t mem_busy = filesys.CLUSTER_COUNT * filesys.CLUSTER_SIZE - filesys.free_mem_size();
+    assert(mem_busy == filesys.SYSTEM_USED_SIZE);
+    printf("File system randomized RW test finished: %u MB, %u KB, %u bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, TOTAL_SIZE);
 }
 
-int main()
-{
+void test_crc32() {
     const uint32_t fs_cluster_size = 1024;
     const uint32_t fs_size = 32 * fs_cluster_size;
     const uint32_t fs_filename_max_length = 32;
     std::unique_ptr<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>> fat_test_ptr = std::make_unique<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>>();
+    //
+    const char test_abc[] = "ABC";
+    const char test_d[] = "D";
+    uint32_t crc_test_3 = lofat::s_crc32.update((uint8_t*)test_abc, 3, CRC32_DEFAULT_VALUE); // start from filled to do not shift initial crc zeros
+    printf("ABC remainder lookuped: %#010x\n", crc_test_3);
+    crc_test_3 = lofat::s_crc32.update((uint8_t*)test_d, 1, crc_test_3);
+    printf("ABCD remainder lookuped: %#010x\n", crc_test_3);
+    {
+        int32_t abc_fd = fat_test_ptr->open("saved_text.txt", 'w');
+        fat_test_ptr->write((uint8_t*)test_abc, 3, 1, abc_fd);
+        fat_test_ptr->write((uint8_t*)test_d, 1, 1, abc_fd);
+        fat_test_ptr->close(abc_fd);
+        lofat::fileinfo<fs_filename_max_length> fst = fat_test_ptr->stat(abc_fd);
+        printf("File remainder lookuped: %#010x\n", fst.crc32);
+    }
+}
+
+void test_simple_rw() {
+    const uint32_t fs_cluster_size = 1024;
+    const uint32_t fs_size = 32 * fs_cluster_size;
+    const uint32_t fs_filename_max_length = 32;
+    std::unique_ptr<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>> fat_test_ptr = std::make_unique<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>>();
+
     const int max_user_file_count = fat_test_ptr->CLUSTER_COUNT - fat_test_ptr->SYSTEM_USED_CLUSTERS;
     for (int i = 0; i < max_user_file_count; i++) {
         char filename[fs_filename_max_length] = { 0 };
@@ -614,28 +717,19 @@ int main()
         fat_test_ptr->close(text_fd);
         delete[] text;
     }
-    // TODO: MASSIVE TESTING OF EVERYTHING
-    // NEED A LOT OF RANDOM TESTS WITH CHECKING OF CORRECTNESS OVER MILLIONS OF WRITINGS
-    const char test_abc[] = "ABC";
-    const char test_d[] = "D";
-    uint32_t crc_test_3 = lofat::s_crc32.update((uint8_t*)test_abc, 3, CRC32_DEFAULT_VALUE); // start from filled to do not shift initial crc zeros
-    printf("ABC remainder lookuped: %#010x\n", crc_test_3);
-    crc_test_3 = lofat::s_crc32.update((uint8_t*)test_d, 1, crc_test_3);
-    printf("ABCD remainder lookuped: %#010x\n", crc_test_3);
-    {
-        int32_t abc_fd = fat_test_ptr->open("saved_text.txt", 'w');
-        fat_test_ptr->write((uint8_t*)test_abc, 3, 1, abc_fd);
-        fat_test_ptr->write((uint8_t*)test_d, 1, 1, abc_fd);
-        fat_test_ptr->close(abc_fd);
-        lofat::fileinfo<fs_filename_max_length> fst = fat_test_ptr->stat(abc_fd);
-        printf("File remainder lookuped: %#010x\n", fst.fcrc32);
-    }
+}
 
-    for (int i = 0; i < 100; i++) {
-        int random_cluster_count = rand() % 10;
-        int random_byte_addition = rand() % 100;
-        test_fs_readback(*fat_test_ptr, random_cluster_count * fs_cluster_size + random_byte_addition);
-    }
+void test_randomized_rw() {
+    const uint32_t fs_cluster_size = 1024;
+    const uint32_t fs_size = 32 * fs_cluster_size;
+    const uint32_t fs_filename_max_length = 32;
+    std::unique_ptr<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>> fat_test_ptr = std::make_unique<lofat::fs<fs_size, fs_cluster_size, fs_filename_max_length>>();
 
+    test_fs_readback(*fat_test_ptr, 60.0f);
+}
+
+int main()
+{
+    test_randomized_rw();
     return 0;
 }
