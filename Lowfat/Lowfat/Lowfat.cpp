@@ -435,82 +435,11 @@ namespace lofat {
 #pragma pack(pop)
 }
 
-template<typename T>
-struct Buf {
-public:
-    Buf(uint32_t size) {
-       _data = new T[size];
-       _size = size;
-    }
-    // copy constructor
-    Buf(const Buf<T>& other) {
-        _data = new T[_size];
-        _size = other._size;
-        memcpy(_data, other._data, sizeof(T) * _size);
-    }
-    // copy assignment from lvalue
-    Buf<T>& operator=(const Buf<T>& other) {
-        if (_data != other._data) {
-            this->free();
-            _data = new T[_size];
-            _size = other._size;
-            memcpy(_data, other._data, sizeof(T) * _size);
-        }
-        return *this;
-    }
-    // move constructor
-    Buf(Buf<T>&& other) noexcept {
-        _data = other._data;
-        _size = other._size;
-        other._data = nullptr;
-        other._size = 0;
-    }
-    // move assignment from rvalue
-    Buf<T>& operator=(Buf<T>&& other) noexcept {
-        if (_data != other._data) {
-            this->free();
-            _data = other._data;
-            _size = other._size;
-            other._data = nullptr;
-            other._size = 0;
-        }
-        return *this;
-    }
-    const T& operator[](uint32_t idx) const {
-        assert(idx >= 0 && idx < _size);
-        return _data[idx];
-    }
-    T& operator[](uint32_t idx) {
-        assert(idx >= 0 && idx < _size);
-        return _data[idx];
-    }
-    T* data() const {
-        return _data;
-    }
-    uint32_t ulen() const {
-        return _size;
-    }
-    ~Buf() {
-        this->free();
-    }
-private:
-    T* _data = nullptr;
-    uint32_t _size = 0;
-
-    void free() {
-        if (_data) {
-            delete[] _data;
-            _data = nullptr;
-        }
-        _size = 0;
-    }
-};
-
-uint32_t fill_random_byte_buffer_and_calc_crc32(Buf<byte>& mem) {
-    for (int i = 0; i < mem.ulen(); i++) {
+uint32_t fill_random_byte_buffer_and_calc_crc32(std::vector<byte>& mem) {
+    for (int i = 0; i < mem.size(); i++) {
         mem[i] = (uint8_t)(rand() % 256);
     }
-    return lofat::s_crc32.update(mem.data(), mem.ulen(), CRC32_DEFAULT_VALUE);
+    return lofat::s_crc32.update(mem.data(), mem.size(), CRC32_DEFAULT_VALUE);
 }
 
 struct MemAmount_t {
@@ -560,17 +489,17 @@ void test_fs_readback(lofat::fs<TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH>& filesys,
                 crcs.push_back(0);
                 filenames.push_back(filename_t{});
             }
-            Buf<byte> mem(random_filesize);
+            std::vector<byte> mem(random_filesize);
             crcs[cur_empty_file_idx] = fill_random_byte_buffer_and_calc_crc32(mem);
             filename_t& filename = filenames[cur_empty_file_idx];
             snprintf(filename.data(), filename.size, "test_file_%u_%u.bin", cycle_idx, cur_empty_file_idx);
             int32_t fd = filesys.open(filename.data(), 'w');
-            uint32_t written = filesys.write(mem.data(), mem.ulen(), 1, fd);
+            uint32_t written = filesys.write(mem.data(), mem.size(), 1, fd);
             filesys.close(fd);
             assert(written == 1);
             fileinfo_t finfo = filesys.stat(fd);
             assert(crcs[cur_empty_file_idx] == finfo.crc32);
-            rewritten_memory += mem.ulen();
+            rewritten_memory += mem.size();
             cur_empty_file_idx++;
             writes_count++;
         } 
@@ -587,13 +516,13 @@ void test_fs_readback(lofat::fs<TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH>& filesys,
                 int fd = filesys.open(filenames[cur_file_idx].data(), 'r');
                 assert(fd >= LF_OK);
                 fileinfo_t finfo = filesys.stat(fd);
-                Buf<byte> mem(finfo.size);
-                int32_t read = filesys.read(mem.data(), 1, mem.ulen(), fd);
+                std::vector<byte> mem(finfo.size);
+                int32_t read = filesys.read(mem.data(), 1, mem.size(), fd);
                 filesys.close(fd);
-                uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), mem.ulen(), CRC32_DEFAULT_VALUE);
+                uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), mem.size(), CRC32_DEFAULT_VALUE);
                 assert(test_crc32 == crcs[cur_file_idx] && test_crc32 == finfo.crc32);
                 uint32_t freed_clusters = filesys.remove(fd);
-                assert(freed_clusters == (mem.ulen() / CLUSTER_SIZE + (mem.ulen() % CLUSTER_SIZE > 0)));
+                assert(freed_clusters == (mem.size() / CLUSTER_SIZE + (mem.size() % CLUSTER_SIZE > 0)));
                 //
 #if _DEBUG
                 printf("Removed '%s'\n", filenames[cur_file_idx].data());
@@ -620,13 +549,13 @@ void test_fs_readback(lofat::fs<TOTAL_SIZE, CLUSTER_SIZE, NAME_LENGTH>& filesys,
         int fd = filesys.open(filenames[i].data(), 'r');
         assert(fd >= LF_OK);
         fileinfo_t finfo = filesys.stat(fd);
-        Buf<byte> mem(finfo.size);
-        int32_t read = filesys.read(mem.data(), 1, mem.ulen(), fd);
+        std::vector<byte> mem(finfo.size);
+        int32_t read = filesys.read(mem.data(), 1, mem.size(), fd);
         filesys.close(fd);
-        uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), mem.ulen(), CRC32_DEFAULT_VALUE);
+        uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), mem.size(), CRC32_DEFAULT_VALUE);
         assert(test_crc32 == crcs[i] && test_crc32 == finfo.crc32);
         uint32_t freed_clusters = filesys.remove(fd);
-        assert(freed_clusters == (mem.ulen() / CLUSTER_SIZE + (mem.ulen() % CLUSTER_SIZE > 0)));
+        assert(freed_clusters == (mem.size() / CLUSTER_SIZE + (mem.size() % CLUSTER_SIZE > 0)));
     }
     uint32_t mem_busy = filesys.CLUSTER_COUNT * filesys.CLUSTER_SIZE - filesys.free_mem_size();
     assert(mem_busy == filesys.SYSTEM_USED_SIZE);
