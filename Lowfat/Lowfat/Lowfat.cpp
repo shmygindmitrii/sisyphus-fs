@@ -502,12 +502,9 @@ struct MemAmount_t {
 };
 
 void test_fs_readback(lofat::fs& filesys, double test_period) {
-    using fsclass = typename lofat::fs;
-    using filename_t = typename lofat::filename_t;
-    using fileinfo_t = typename lofat::fileinfo;
     srand(time(nullptr));
     uint32_t file_idx = 0;
-    std::vector<filename_t> filenames;
+    std::vector<lofat::filename_t> filenames;
     std::vector<uint32_t> crcs;
     const auto start{ std::chrono::steady_clock::now() };
     auto end{ std::chrono::steady_clock::now() };
@@ -517,7 +514,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
     uint32_t cycle_idx = 0;
     uint32_t writes_count = 0;
     MemAmount_t rewritten_memory{};
-    //uint32_t 
+    
     while (elapsed.count() < test_period) {
         size_t available = filesys.free_available_mem_size(); // not tight, free clusters * cluster_size
         if (available) {
@@ -526,17 +523,17 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
             if (cur_empty_file_idx == crcs.size()) {
                 // push_back new one
                 crcs.push_back(0);
-                filenames.push_back(filename_t(filesys.filename_length));
+                filenames.push_back(lofat::filename_t(filesys.filename_length));
             }
             std::vector<byte> mem(random_filesize);
             crcs[cur_empty_file_idx] = fill_random_byte_buffer_and_calc_crc32(mem);
-            filename_t& filename = filenames[cur_empty_file_idx];
+            lofat::filename_t& filename = filenames[cur_empty_file_idx];
             snprintf(filename.data(), filename.size(), "test_file_%u_%u.bin", cycle_idx, cur_empty_file_idx);
             int32_t fd = filesys.open(filename.data(), 'w');
             uint32_t written = filesys.write(mem.data(), mem.size(), 1, fd);
             filesys.close(fd);
             assert(written == 1);
-            fileinfo_t finfo = filesys.stat(fd);
+            lofat::fileinfo finfo = filesys.stat(fd);
             assert(crcs[cur_empty_file_idx] == finfo.props.crc32);
             rewritten_memory += mem.size();
             cur_empty_file_idx++;
@@ -554,7 +551,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
                 uint32_t cur_file_idx = rand() % files_written;
                 int fd = filesys.open(filenames[cur_file_idx].data(), 'r');
                 assert(fd >= LF_OK);
-                fileinfo_t finfo = filesys.stat(fd);
+                lofat::fileinfo finfo = filesys.stat(fd);
                 std::vector<byte> mem(finfo.props.size);
                 int32_t read = filesys.read(mem.data(), 1, mem.size(), fd);
                 filesys.close(fd);
@@ -571,7 +568,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
                     filenames[cur_file_idx] = filenames[files_written - 1];
                     crcs[cur_file_idx] = crcs[files_written - 1];
                 }
-                filenames[files_written - 1] = filename_t(filesys.filename_length);
+                filenames[files_written - 1] = lofat::filename_t(filesys.filename_length);
                 crcs[files_written - 1] = 0;
                 files_written--;
             }
@@ -587,7 +584,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
     for (uint32_t i = 0; i < cur_empty_file_idx; i++) {
         int fd = filesys.open(filenames[i].data(), 'r');
         assert(fd >= LF_OK);
-        fileinfo_t finfo = filesys.stat(fd);
+        lofat::fileinfo finfo = filesys.stat(fd);
         std::vector<byte> mem(finfo.props.size);
         int32_t read = filesys.read(mem.data(), 1, mem.size(), fd);
         filesys.close(fd);
