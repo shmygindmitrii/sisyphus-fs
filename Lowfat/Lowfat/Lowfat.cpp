@@ -80,7 +80,7 @@ static inline uint32_t calculate_range_length(int32_t* table_next, int32_t first
 }
 
 namespace lofat {
-    static constexpr uint32_t CRC_CCIT32 = 0x04C11DB7;
+    //static constexpr uint32_t CRC_CCIT32 = 0x04C11DB7;
     static constexpr uint32_t CRC_CCIT32_REV = 0xEDB88320;
 
     template<uint32_t P>
@@ -108,16 +108,14 @@ namespace lofat {
 
 #pragma pack(push, 1)
     struct fileprops {
+        uint64_t mtime = 0;
         uint32_t size = 0;
+        uint32_t crc32 = CRC32_DEFAULT_VALUE;
         int32_t first_cluster = -1;
         int32_t last_cluster = -1;
-        uint32_t locked = 0;
-        uint32_t current_cluster = 0;
-        uint32_t current_byte = 0;
-        uint64_t mtime = 0;
-        uint32_t crc32 = CRC32_DEFAULT_VALUE;
-        //
-        uint32_t reserved[4];
+        int32_t current_cluster = 0;   // not more than 65536 clusters
+        uint16_t current_byte = 0;      // not more than 65536 bytes in cluster
+        uint8_t locked = 0;
     };
 
     struct fileinfo {
@@ -133,19 +131,19 @@ namespace lofat {
         void reset() {
             assert(name_length > 0);
             std::fill(name.begin(), name.end(), '\0');
+            props.mtime = 0;
             props.size = 0;
+            props.crc32 = CRC32_DEFAULT_VALUE;
             props.first_cluster = LF_NONE;
             props.last_cluster = LF_NONE;
-            props.locked = 0;
             props.current_cluster = LF_NONE;
             props.current_byte = 0;
-            props.mtime = 0;
-            props.crc32 = CRC32_DEFAULT_VALUE;
+            props.locked = 0;
         }
 
         uint32_t type_size() const {
             // packed tight
-            return sizeof(fileprops) + name.size() + 4;
+            return sizeof(fileprops) + (uint32_t)name.size() + 4;
         }
     };
     struct fsinfo_t {
@@ -153,12 +151,10 @@ namespace lofat {
         uint32_t cluster_count;
         uint32_t name_max_length;
         uint32_t file_count;
-        uint32_t filename_busy_head;
-        uint32_t filename_free_head;
-        uint32_t data_busy_tail;
-        uint32_t data_free_head;
-        //
-        uint32_t reserved[16];
+        int32_t filename_busy_head;
+        int32_t filename_free_head;
+        int32_t data_busy_tail;
+        int32_t data_free_head;
     };
 
     struct filename_t {
@@ -172,7 +168,7 @@ namespace lofat {
             return &name[0];
         }
         uint32_t size() {
-            return name.size();
+            return (uint32_t)name.size();
         }
     };
 
@@ -204,7 +200,7 @@ namespace lofat {
             _used_cluster_count(system_used_clusters)
         {
             assert(system_used_clusters < cluster_count);
-            for (int i = 0; i < cluster_count; i++) {
+            for (uint32_t i = 0; i < cluster_count; i++) {
                 _fileinfos.push_back(fileinfo(filename_length));
             }
             _data_table_next.resize(cluster_count);
@@ -215,6 +211,7 @@ namespace lofat {
             this->reset();
         }
         void prepare_to_dump() {
+            // TODO: this func does not work, need to fixed
             uint32_t offset = 0;
             fsinfo_t fsinfo { cluster_size, cluster_count, filename_length, _file_count,
                 _filename_table_busy_tail, _filename_table_free_head,
@@ -243,7 +240,7 @@ namespace lofat {
                 return LF_ERROR_FILE_NAME_TOO_LONG;
             }
             int32_t fd = this->find(filename);
-            if (fd >= 0 && fd < system_used_clusters) {
+            if (fd >= 0 && fd < (int32_t)system_used_clusters) {
                 return LF_ERROR_SYSTEM_SECTION;
             }
             if (mode == 'r') {
@@ -273,23 +270,23 @@ namespace lofat {
                 _used_cluster_count++;
                 // add to _fileinfos first free first_cluster
                 sprintf_s(_fileinfos[fd].name.data(), filename_length, filename);
-                _fileinfos[fd].props.locked = (LF_FILE_LOCKED | LF_FILE_WRITE);
+                _fileinfos[fd].props.mtime = 0;
+                _fileinfos[fd].props.size = 0;
                 _fileinfos[fd].props.first_cluster = _data_table_busy_tail;
                 _fileinfos[fd].props.last_cluster = _data_table_busy_tail;
-                _fileinfos[fd].props.size = 0;
                 _fileinfos[fd].props.current_cluster = _data_table_busy_tail;
                 _fileinfos[fd].props.current_byte = 0;
-                _fileinfos[fd].props.mtime = 0;
+                _fileinfos[fd].props.locked = (LF_FILE_LOCKED | LF_FILE_WRITE);
                 _file_count++;
                 return fd;
             }
             return LF_ERROR_FILE_WRONG_MODE;
         }
         int32_t read(uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd) {
-            if (fd >= 0 && fd < system_used_clusters) {
+            if (fd >= 0 && fd < (int32_t)system_used_clusters) {
                 return LF_ERROR_SYSTEM_SECTION;
             }
-            if (fd > last_system_cluster) {
+            if (fd > (int32_t)last_system_cluster) {
                 fileinfo& fdi = _fileinfos[fd];
                 uint32_t read_size = elem_size * count;
                 if (read_size > fdi.props.size) {
@@ -310,7 +307,7 @@ namespace lofat {
                     uint32_t offset = _fileinfos[fd].props.current_cluster * cluster_size + _fileinfos[fd].props.current_byte;
                     memcpy(buf + buf_offset, &_data[offset], mem_can_read);
                     //
-                    _fileinfos[fd].props.current_byte += mem_can_read;
+                    _fileinfos[fd].props.current_byte += (uint16_t)mem_can_read;
                     buf_offset += mem_can_read;
                     read_size -= mem_can_read;
                 }
@@ -343,7 +340,7 @@ namespace lofat {
                 //
                 memcpy(&_data[offset], buf + buf_offset, mem_can_write);
                 //
-                _fileinfos[fd].props.current_byte += mem_can_write;
+                _fileinfos[fd].props.current_byte += (uint16_t)mem_can_write;
                 _fileinfos[fd].props.size += mem_can_write;
                 buf_offset += mem_can_write;
                 total_write_size -= mem_can_write;
@@ -449,7 +446,7 @@ namespace lofat {
         uint32_t _used_cluster_count;
         //
         void reset() {
-            for (int i = 0; i < cluster_count; i++) {
+            for (uint32_t i = 0; i < cluster_count; i++) {
                 _fileinfos[i] = fileinfo(filename_length);
                 _filename_table_next[i] = i + 1;
                 _filename_table_prev[i] = i - 1;
@@ -462,7 +459,7 @@ namespace lofat {
             _filename_table_next[_filename_table_busy_tail] = LF_NONE;
             _filename_table_prev[_filename_table_free_head] = LF_NONE;
 
-            for (int i = 0; i < system_used_clusters; i++) {
+            for (uint32_t i = 0; i < system_used_clusters; i++) {
                 snprintf(_fileinfos[i].name.data(), filename_length, "SYSTEM%d", i);
                 _fileinfos[i].props.size = cluster_size;
             }
@@ -478,10 +475,10 @@ namespace lofat {
 }
 
 uint32_t fill_random_byte_buffer_and_calc_crc32(std::vector<byte>& mem) {
-    for (int i = 0; i < mem.size(); i++) {
+    for (uint32_t i = 0; i < (uint32_t)mem.size(); i++) {
         mem[i] = (uint8_t)(rand() % 256);
     }
-    return lofat::s_crc32.update(mem.data(), mem.size(), CRC32_DEFAULT_VALUE);
+    return lofat::s_crc32.update(mem.data(), (uint32_t)mem.size(), CRC32_DEFAULT_VALUE);
 }
 
 struct MemAmount_t {
@@ -502,7 +499,7 @@ struct MemAmount_t {
 };
 
 void test_fs_readback(lofat::fs& filesys, double test_period) {
-    srand(time(nullptr));
+    srand((uint32_t)time(nullptr));
     uint32_t file_idx = 0;
     std::vector<lofat::filename_t> filenames;
     std::vector<uint32_t> crcs;
@@ -520,7 +517,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
         if (available) {
             // have a place to write
             size_t random_filesize = (rand() % filesys.total_size) % (available - filesys.cluster_size / 4) + filesys.cluster_size / 4;
-            if (cur_empty_file_idx == crcs.size()) {
+            if (cur_empty_file_idx == (uint32_t)crcs.size()) {
                 // push_back new one
                 crcs.push_back(0);
                 filenames.push_back(lofat::filename_t(filesys.filename_length));
@@ -530,7 +527,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
             lofat::filename_t& filename = filenames[cur_empty_file_idx];
             snprintf(filename.data(), filename.size(), "test_file_%u_%u.bin", cycle_idx, cur_empty_file_idx);
             int32_t fd = filesys.open(filename.data(), 'w');
-            uint32_t written = filesys.write(mem.data(), mem.size(), 1, fd);
+            uint32_t written = filesys.write(mem.data(), (uint32_t)mem.size(), 1, fd);
             filesys.close(fd);
             assert(written == 1);
             lofat::fileinfo finfo = filesys.stat(fd);
@@ -553,12 +550,12 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
                 assert(fd >= LF_OK);
                 lofat::fileinfo finfo = filesys.stat(fd);
                 std::vector<byte> mem(finfo.props.size);
-                int32_t read = filesys.read(mem.data(), 1, mem.size(), fd);
+                int32_t read = filesys.read(mem.data(), 1, (uint32_t)mem.size(), fd);
                 filesys.close(fd);
-                uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), mem.size(), CRC32_DEFAULT_VALUE);
+                uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), (uint32_t)mem.size(), CRC32_DEFAULT_VALUE);
                 assert(test_crc32 == crcs[cur_file_idx] && test_crc32 == finfo.props.crc32);
                 uint32_t freed_clusters = filesys.remove(fd);
-                assert(freed_clusters == (mem.size() / filesys.cluster_size + (mem.size() % filesys.cluster_size > 0)));
+                assert(freed_clusters == ((uint32_t)mem.size() / filesys.cluster_size + ((uint32_t)mem.size() % filesys.cluster_size > 0)));
                 //
 #if _DEBUG
                 printf("Removed '%s'\n", filenames[cur_file_idx].data());
@@ -586,14 +583,14 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
         assert(fd >= LF_OK);
         lofat::fileinfo finfo = filesys.stat(fd);
         std::vector<byte> mem(finfo.props.size);
-        int32_t read = filesys.read(mem.data(), 1, mem.size(), fd);
+        int32_t read = filesys.read(mem.data(), 1, (uint32_t)mem.size(), fd);
         filesys.close(fd);
-        uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), mem.size(), CRC32_DEFAULT_VALUE);
+        uint32_t test_crc32 = lofat::s_crc32.update(mem.data(), (uint32_t)mem.size(), CRC32_DEFAULT_VALUE);
         assert(test_crc32 == crcs[i] && test_crc32 == finfo.props.crc32);
         uint32_t freed_clusters = filesys.remove(fd);
         assert(freed_clusters == (mem.size() / filesys.cluster_size + (mem.size() % filesys.cluster_size > 0)));
     }
-    uint32_t mem_busy = filesys.cluster_count * filesys.cluster_size - filesys.free_mem_size();
+    uint32_t mem_busy = filesys.cluster_count * filesys.cluster_size - (uint32_t)filesys.free_mem_size();
     assert(mem_busy == filesys.system_used_size);
     printf("File system randomized RW test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, filesys.total_size);
 }
