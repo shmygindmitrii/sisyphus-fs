@@ -179,12 +179,14 @@ namespace lofat {
     struct fsinfo_t {
         uint32_t cluster_size;
         uint32_t cluster_count;
-        uint32_t name_max_length;
+        uint32_t filename_max_length;
         uint32_t file_count;
         int32_t filename_busy_head;
         int32_t filename_free_head;
         int32_t data_busy_tail;
         int32_t data_free_head;
+        uint32_t used_memory;
+        uint32_t used_cluster_count;
     };
 
     struct filename_t {
@@ -204,6 +206,8 @@ namespace lofat {
 
     class fs {
     public:
+        static constexpr uint64_t start_marker = 11348751673753212928ULL;   // this is random marker of fs beginning
+        static constexpr uint64_t end_marker = 907403631122679808ULL;       // this is random marker of fs ending
         const uint32_t cluster_size;
         const uint32_t cluster_count;
         const uint32_t filename_length;
@@ -241,15 +245,25 @@ namespace lofat {
             this->reset();
         }
         void prepare_to_dump() {
-            // TODO: this func does not work, need to fixed
             uint32_t offset = 0;
             fsinfo_t fsinfo { cluster_size, cluster_count, filename_length, _file_count,
                 _filename_table_busy_tail, _filename_table_free_head,
-                _data_table_busy_tail, _data_table_free_head };
+                _data_table_busy_tail, _data_table_free_head, _used_memory, _used_cluster_count };
             memcpy(_data.data(), &fsinfo, sizeof(fsinfo_t));
             offset += sizeof(fsinfo_t);
-            const uint32_t fileinfo_array_size = cluster_count * fileinfo(filename_length).type_size();
-            memcpy(&_data[offset], &_fileinfos, fileinfo_array_size);
+            const uint32_t fileinfo_props_size = sizeof(lofat::fileprops);
+            const uint32_t fileinfo_entry_size = filename_length + fileinfo_props_size;
+            const uint32_t fileinfo_array_size = cluster_count * fileinfo_entry_size;
+            // iterate over all file infos
+            uint32_t cur_fileinfo_offset = 0;
+            int32_t busy_head = _filename_table_next[last_system_cluster];
+            while (busy_head != LF_NONE) {
+                if (_fileinfos[busy_head].props.size != 0) {
+                    memcpy(&_data[offset + busy_head * fileinfo_entry_size], _fileinfos[busy_head].name.data(), filename_length);
+                    memcpy(&_data[offset + busy_head * fileinfo_entry_size + filename_length], &_fileinfos[busy_head].props, fileinfo_props_size);
+                }
+                busy_head = _filename_table_next[busy_head];
+            }
             offset += fileinfo_array_size;
             memcpy(&_data[offset], _filename_table_next.data(), filename_table_size / 2);
             offset += filename_table_size / 2;
@@ -261,6 +275,25 @@ namespace lofat {
             offset += data_table_size / 2;
             assert(offset == system_used_size);
         }
+
+        static fs create_from_memory(std::vector<byte>& raw_data) {
+            assert(raw_data.size() > 2 * sizeof(uint64_t) + sizeof(fsinfo_t));
+            uint64_t beginner = 0;
+            uint64_t ender = 0;
+            memcpy(&beginner, &raw_data[0], sizeof(uint64_t));
+            assert(beginner == fs::start_marker);
+            memcpy(&ender, &raw_data[raw_data.size() - sizeof(uint64_t)], sizeof(uint64_t));
+            assert(ender == fs::end_marker);
+            //
+            uint32_t offset = sizeof(uint64_t);
+            fsinfo_t fsinfo;
+            memcpy(&fsinfo, &raw_data[offset], sizeof(fsinfo_t));
+            fs fat(fsinfo.cluster_size, fsinfo.cluster_count, fsinfo.filename_max_length);
+            assert(fat.total_size == raw_data.size());
+            memcpy(&fat._data[0], raw_data.data(), raw_data.size());
+            return fat;
+        }
+
         int32_t open(const char* filename, char mode) {
             if (filename == nullptr) {
                 return LF_ERROR_FILE_NAME_NULL;
@@ -458,6 +491,10 @@ namespace lofat {
         uint32_t file_count() const {
             return _file_count;
         }
+
+        std::vector<byte>& raw() {
+            return _data;
+        }
     private:
         std::vector<fileinfo> _fileinfos;
         std::vector<int32_t> _filename_table_next;
@@ -529,7 +566,7 @@ struct MemAmount_t {
 };
 
 void test_fs_readback(lofat::fs& filesys, double test_period) {
-    srand((uint32_t)time(nullptr));
+    
     uint32_t file_idx = 0;
     std::vector<lofat::filename_t> filenames;
     std::vector<uint32_t> crcs;
@@ -720,8 +757,45 @@ void test_randomized_rw() {
     test_fs_readback(fat, 10.0f);
 }
 
+void test_randomized_dump() {
+    const uint32_t fs_cluster_size = 4 * 1024;
+    const uint32_t fs_cluster_count = 1024;
+    const uint32_t fs_filename_max_length = 32;
+    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length);
+    uint32_t file_idx = 0;
+    std::vector<uint32_t> crcs;
+    std::vector <std::string> filenames;
+    size_t available = fat.free_available_mem_size();
+    while (available) {
+        size_t random_filesize = (rand() % fat.total_size) % (available - fat.cluster_size / 4) + fat.cluster_size / 4;
+        std::vector<byte> mem(random_filesize, 0);
+        uint32_t crc = fill_random_byte_buffer_and_calc_crc32(mem);
+        char filename[fs_filename_max_length] = {};
+        snprintf(filename, fs_filename_max_length, "test_file_%d.bin", file_idx);
+        int fd = fat.open(filename, 'w');
+        fat.write(mem.data(), 1, mem.size(), fd);
+        fat.close(fd);
+        available = fat.free_available_mem_size();
+        //
+        crcs.push_back(crc);
+        filenames.push_back(filename);
+    }
+    // finished fullfilling of fs
+    // prepare system clusters
+    fat.prepare_to_dump();
+    // dump it like to a file
+    std::vector<byte> dumped(fat.total_size + sizeof(uint64_t) * 2, 0);
+    memcpy(&dumped[0], &fat.start_marker, sizeof(uint64_t));
+    memcpy(&dumped[fat.total_size], &fat.end_marker, sizeof(uint64_t));
+    memcpy(&dumped[sizeof(uint64_t)], fat.raw().data(), fat.total_size);
+    // now we should recreate new fs from this dump and check
+
+}
+
 int main()
 {  
-    test_randomized_rw();
+    srand((uint32_t)time(nullptr));
+    //test_randomized_rw();
+    test_randomized_dump();
     return 0;
 }
