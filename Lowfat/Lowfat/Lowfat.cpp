@@ -151,16 +151,15 @@ namespace lofat {
 
     struct fileinfo {
         std::vector<char> name;
-        uint32_t name_length = 0;
         fileprops props;
 
-        fileinfo(uint32_t _name_length) : name_length(_name_length) {
-            name.resize(name_length);
+        fileinfo(uint32_t _name_length) {
+            name.resize(_name_length);
             std::fill(name.begin(), name.end(), '\0');
         }
 
         void reset() {
-            assert(name_length > 0);
+            assert(name.size() > 0);
             std::fill(name.begin(), name.end(), '\0');
             props.mtime = 0;
             props.size = 0;
@@ -174,7 +173,7 @@ namespace lofat {
 
         uint32_t type_size() const {
             // packed tight
-            return sizeof(fileprops) + (uint32_t)name.size() + 4;
+            return sizeof(fileprops) + (uint32_t)name.size();
         }
     };
     struct fsinfo_t {
