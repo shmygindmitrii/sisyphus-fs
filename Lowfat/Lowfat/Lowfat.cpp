@@ -231,6 +231,13 @@ namespace lofat {
             _data.resize(_total_size, 0);
             _fileinfos.resize(cluster_count);
             // now we should have place for everything
+            _cluster_size = reinterpret_cast<uint32_t*>(&_data[0]);
+            _cluster_count = _cluster_size + 1;
+            _filename_length = _cluster_size + 2;
+            *_cluster_size = cluster_size;
+            *_cluster_count = cluster_count;
+            *_filename_length = filename_length;
+            //
             const uint32_t fs_info_size = 6 * sizeof(uint32_t) + 4 * sizeof(int32_t); // just to mark difference
             _system_used_size = fs_info_size + (sizeof(fileprops) + filename_length + sizeof(int32_t) * 4) * cluster_count;
             _system_used_clusters = _system_used_size / cluster_size + (int)(_system_used_size % cluster_size > 0);
@@ -238,23 +245,18 @@ namespace lofat {
             //
             assert(_system_used_clusters < cluster_count);
             //
-            _cluster_size = reinterpret_cast<uint32_t*>(&_data[0]);
-            *_cluster_size = cluster_size;
-            _cluster_count = _cluster_size + 1;
-            *_cluster_count = cluster_count;
-            _filename_length = _cluster_size + 2;
-            *_filename_length = filename_length;
+            this->set_addresses();
+            this->reset();
+        }
+
+        void set_addresses() {
             _used_memory = _cluster_size + 3;
-            *_used_memory = _system_used_size;
             _used_cluster_count = _cluster_size + 4;
-            *_used_cluster_count = _system_used_clusters;
             _file_count = _cluster_size + 5;
             _filename_table_busy_tail = reinterpret_cast<int32_t*>(_file_count) + 1;
-            *_filename_table_busy_tail = LF_NONE;
             _filename_table_free_head = _filename_table_busy_tail + 1;
             _data_table_busy_tail = _filename_table_busy_tail + 2;
-            *_data_table_busy_tail = LF_NONE;
-            _data_table_free_head = _filename_table_busy_tail + 3; // 0
+            _data_table_free_head = _filename_table_busy_tail + 3;
             // 40 bytes used for common for fs values
             uint32_t fileinfos_offset = 40;
             uint32_t fileinfo_stride = sizeof(fileprops) + *_filename_length;
@@ -266,6 +268,16 @@ namespace lofat {
 
             for (uint32_t i = 0; i < *_cluster_count; i++) {
                 _fileinfos[i] = fileinfo(&_data[fileinfos_offset + i * fileinfo_stride], *_filename_length);
+            }
+        }
+
+        void reset() {
+            *_used_memory = _system_used_size;
+            *_used_cluster_count = _system_used_clusters;
+            *_filename_table_busy_tail = LF_NONE;
+            *_data_table_busy_tail = LF_NONE;
+
+            for (uint32_t i = 0; i < *_cluster_count; i++) {
                 _fileinfos[i].reset();
                 _filename_table_next[i] = i + 1;
                 _filename_table_prev[i] = i - 1;
