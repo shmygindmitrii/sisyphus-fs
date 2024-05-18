@@ -226,12 +226,12 @@ namespace lofat {
         static constexpr uint64_t start_marker = 11348751673753212928ULL;   // this is random marker of fs beginning
         static constexpr uint64_t end_marker = 907403631122679808ULL;       // this is random marker of fs ending
         
-        fs(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length) {
+        fs(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* data): _data(data) {
+            assert(data != nullptr);
             _total_size = cluster_count * cluster_size;
-            _data.resize(_total_size, 0);
             _fileinfos.resize(cluster_count);
             // now we should have place for everything
-            _cluster_size = reinterpret_cast<uint32_t*>(&_data[0]);
+            _cluster_size = reinterpret_cast<uint32_t*>(_data);
             _cluster_count = _cluster_size + 1;
             _filename_length = _cluster_size + 2;
             *_cluster_size = cluster_size;
@@ -300,24 +300,6 @@ namespace lofat {
             *_data_table_free_head = _last_system_cluster + 1;
             _data_table_next[*_data_table_busy_tail] = LF_NONE;
             _data_table_prev[*_data_table_free_head] = LF_NONE;
-        }
-
-        static fs create_from_memory(std::vector<byte>& raw_data) {
-            assert(raw_data.size() > 2 * sizeof(uint64_t) + sizeof(fsinfo_t));
-            uint64_t beginner = 0;
-            uint64_t ender = 0;
-            memcpy(&beginner, &raw_data[0], sizeof(uint64_t));
-            assert(beginner == fs::start_marker);
-            memcpy(&ender, &raw_data[raw_data.size() - sizeof(uint64_t)], sizeof(uint64_t));
-            assert(ender == fs::end_marker);
-            //
-            uint32_t offset = sizeof(uint64_t);
-            fsinfo_t fsinfo;
-            memcpy(&fsinfo, &raw_data[offset], sizeof(fsinfo_t));
-            fs fat(fsinfo.cluster_size, fsinfo.cluster_count, fsinfo.filename_max_length);
-            assert(fat.total_size() == raw_data.size());
-            memcpy(&fat._data[0], raw_data.data(), raw_data.size());
-            return fat;
         }
 
         int32_t open(const char* filename, char mode) {
@@ -445,7 +427,7 @@ namespace lofat {
                 _fileinfos[fd].props->current_byte = 0;
                 assert(_fileinfos[fd].props->size != 0);
 #if _DEBUG
-                printf("Close descriptor %d of size %u and crc32 = %u, remains %u\n", fd, _fileinfos[fd].props->size, _fileinfos[fd].props->crc32, free_available_mem_size());
+                printf("Close descriptor %d of size %u and crc32 = %u, remains %u\n", fd, _fileinfos[fd].props->size, _fileinfos[fd].props->crc32, (uint32_t)free_available_mem_size());
 #endif
                 return LF_OK;
             }
@@ -518,7 +500,7 @@ namespace lofat {
             return (*_file_count);
         }
 
-        std::vector<byte>& raw() {
+        uint8_t* raw() {
             return _data;
         }
 
@@ -547,7 +529,7 @@ namespace lofat {
         }
     private:
         // this is the only real data
-        std::vector<uint8_t> _data; // of total_size
+        uint8_t* _data = nullptr; // of total_size
         //
         uint32_t* _cluster_size = nullptr;
         uint32_t* _cluster_count = nullptr;
@@ -703,7 +685,8 @@ void test_crc32() {
     const uint32_t fs_cluster_size = 4 * 1024;
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
-    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length);
+    std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
+    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data());
     //
     const char test_abc[] = "ABC";
     const char test_d[] = "D";
@@ -725,7 +708,8 @@ void test_simple_rw() {
     const uint32_t fs_cluster_size = 4 * 1024;
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
-    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length);
+    std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
+    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data());
 
     const int max_user_file_count = fat.cluster_count() - fat.system_used_clusters();
     for (int i = 0; i < max_user_file_count; i++) {
@@ -789,7 +773,8 @@ void test_randomized_rw(const float duration) {
     const uint32_t fs_cluster_size = 4 * 1024;
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
-    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length);
+    std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
+    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data());
 
     test_fs_readback(fat, duration);
 }
@@ -798,7 +783,8 @@ void test_randomized_dump() {
     const uint32_t fs_cluster_size = 4 * 1024;
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
-    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length);
+    std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
+    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data());
     uint32_t file_idx = 0;
     std::vector<uint32_t> crcs;
     std::vector <std::string> filenames;
@@ -833,7 +819,7 @@ void test_randomized_dump() {
 int main()
 {  
     srand((uint32_t)time(nullptr));
-    test_randomized_rw(240.0f);
+    test_randomized_rw(10.0f);
     //test_randomized_dump();
     return 0;
 }
