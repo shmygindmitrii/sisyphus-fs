@@ -226,7 +226,7 @@ namespace lofat {
         static constexpr uint64_t start_marker = 11348751673753212928ULL;   // this is random marker of fs beginning
         static constexpr uint64_t end_marker = 907403631122679808ULL;       // this is random marker of fs ending
         
-        fs(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* data): _data(data) {
+        fs(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* data, const bool resetfs = true): _data(data) {
             assert(data != nullptr);
             _total_size = cluster_count * cluster_size;
             _fileinfos.resize(cluster_count);
@@ -246,7 +246,10 @@ namespace lofat {
             assert(_system_used_clusters < cluster_count);
             //
             this->set_addresses();
-            this->reset();
+            if (resetfs) {
+                // nullify what it was
+                this->reset();
+            }
         }
 
         void set_addresses() {
@@ -272,6 +275,7 @@ namespace lofat {
         }
 
         void reset() {
+            //memset(_data + 12, 0, _total_size - 12);
             *_used_memory = _system_used_size;
             *_used_cluster_count = _system_used_clusters;
             *_filename_table_busy_tail = LF_NONE;
