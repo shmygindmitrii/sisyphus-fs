@@ -846,7 +846,7 @@ void test_randomized_dump(const float duration) {
         elapsed = end - start;
         cycle_idx++;
     }
-    printf("File system dump test performed %u times\n", cycle_idx);
+    printf("File system randomized dump test finished: %u cycles of fullfilling and working over in-memory dumped fs\n", cycle_idx);
 }
 
 int main()
