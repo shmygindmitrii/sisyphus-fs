@@ -12,6 +12,7 @@
 #include <chrono>
 
 #include "crc32_ccit.h"
+#include "lowfat.h"
 
 typedef uint8_t byte;
 
@@ -32,8 +33,6 @@ typedef uint8_t byte;
 #define LF_ERROR_FILE_NAME_TOO_LONG         -8
 #define LF_ERROR_FILE_WRONG_MODE            -9
 #define LF_ERROR_FILE_READ_SIZE_OVERFLOW    -10
-
-#define CRC32_DEFAULT_VALUE                  0xFFFFFFFF
 
 // tail addition
 static inline void acquire_next_free(int32_t* table_next, int32_t* table_prev, int32_t* last_busy, int32_t* first_free) {
@@ -86,7 +85,7 @@ namespace lofat {
     struct fileprops {
         uint64_t mtime = 0;
         uint32_t size = 0;
-        uint32_t crc32 = CRC32_DEFAULT_VALUE;
+        uint32_t crc32 = CRC32_CCIT_DEFAULT_VALUE;
         int32_t first_cluster = -1;
         int32_t last_cluster = -1;
         int32_t current_cluster = 0;   // not more than 65536 clusters
@@ -96,7 +95,7 @@ namespace lofat {
         void reset() {
             mtime = 0;
             size = 0;
-            crc32 = CRC32_DEFAULT_VALUE;
+            crc32 = CRC32_CCIT_DEFAULT_VALUE;
             first_cluster = LF_NONE;
             last_cluster = LF_NONE;
             current_cluster = LF_NONE;
@@ -509,7 +508,7 @@ uint32_t fill_random_byte_buffer_and_calc_crc32(std::vector<byte>& mem) {
     for (uint32_t i = 0; i < (uint32_t)mem.size(); i++) {
         mem[i] = (uint8_t)(rand() % 256);
     }
-    return crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_DEFAULT_VALUE);
+    return crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_CCIT_DEFAULT_VALUE);
 }
 
 struct MemAmount_t {
@@ -587,7 +586,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
                 std::vector<byte> mem(finfo.props->size);
                 int32_t read = filesys.read(mem.data(), 1, (uint32_t)mem.size(), fd);
                 filesys.close(fd);
-                uint32_t test_crc32 = crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_DEFAULT_VALUE);
+                uint32_t test_crc32 = crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_CCIT_DEFAULT_VALUE);
                 assert(test_crc32 == crcs[cur_file_idx] && test_crc32 == finfo.props->crc32);
                 uint32_t freed_clusters = filesys.remove(fd);
                 assert(freed_clusters == ((uint32_t)mem.size() / filesys.cluster_size() + ((uint32_t)mem.size() % filesys.cluster_size() > 0)));
@@ -621,7 +620,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
         std::vector<byte> mem(finfo.props->size);
         int32_t read = filesys.read(mem.data(), 1, (uint32_t)mem.size(), fd);
         filesys.close(fd);
-        uint32_t test_crc32 = crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_DEFAULT_VALUE);
+        uint32_t test_crc32 = crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_CCIT_DEFAULT_VALUE);
         assert(test_crc32 == crcs[i] && test_crc32 == finfo.props->crc32);
         uint32_t freed_clusters = filesys.remove(fd);
         assert(freed_clusters == (mem.size() / filesys.cluster_size() + (mem.size() % filesys.cluster_size() > 0)));
@@ -640,7 +639,7 @@ void test_crc32() {
     //
     const char test_abc[] = "ABC";
     const char test_d[] = "D";
-    uint32_t crc_test_3 = crc32_ccit_update((uint8_t*)test_abc, 3, CRC32_DEFAULT_VALUE); // start from filled to do not shift initial crc zeros
+    uint32_t crc_test_3 = crc32_ccit_update((uint8_t*)test_abc, 3, CRC32_CCIT_DEFAULT_VALUE); // start from filled to do not shift initial crc zeros
     printf("ABC remainder lookuped: %#010x\n", crc_test_3);
     crc_test_3 = crc32_ccit_update((uint8_t*)test_d, 1, crc_test_3);
     printf("ABCD remainder lookuped: %#010x\n", crc_test_3);
@@ -795,7 +794,7 @@ void test_randomized_dump(const float duration) {
             int32_t fd = fat_ref.open(filenames[i].c_str(), 'r');
             std::vector<uint8_t> data(fi.props->size);
             fat_ref.read(data.data(), 1, fi.props->size, fd);
-            uint32_t recrc = crc32_ccit_update(data.data(), fi.props->size, CRC32_DEFAULT_VALUE);
+            uint32_t recrc = crc32_ccit_update(data.data(), fi.props->size, CRC32_CCIT_DEFAULT_VALUE);
             assert(recrc == crcs[i] && recrc == fi.props->crc32);
             fat_ref.close(fd);
             fat_ref.remove(fd);
