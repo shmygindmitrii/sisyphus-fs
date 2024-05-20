@@ -817,7 +817,7 @@ void test_randomized_dump(const float duration) {
         // finished fullfilling of fs
         std::vector<byte> dumped(fat.total_size() + sizeof(uint64_t) * 2, 0);
         memcpy(&dumped[0], &fat.start_marker, sizeof(uint64_t));
-        memcpy(&dumped[fat.total_size()], &fat.end_marker, sizeof(uint64_t));
+        memcpy(&dumped[sizeof(uint64_t) + fat.total_size()], &fat.end_marker, sizeof(uint64_t));
         memcpy(&dumped[sizeof(uint64_t)], fat.raw(), fat.total_size());
         // now we should recreate new fs from this dump and check
         lofat::fs fat_ref(fs_cluster_size, fs_cluster_count, fs_filename_max_length, dumped.data() + sizeof(uint64_t), lofat::EFsInitAction::Use);
