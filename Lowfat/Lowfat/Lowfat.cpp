@@ -472,7 +472,7 @@ namespace lofat {
         }
 
         int32_t remove(int fd) {
-            assert(fd >= 0 && fd < *_cluster_count);
+            assert(fd >= 0 && fd < (int32_t)*_cluster_count);
             if (fd >= 0 && fd < (int32_t)(*_cluster_count)) {
                 // busy clusters handle
                 const uint32_t fileinfo_stride = sizeof(fileprops) + (*_filename_length);
@@ -820,7 +820,30 @@ void test_randomized_dump(const float duration) {
         memcpy(&dumped[sizeof(uint64_t) + fat.total_size()], &fat.end_marker, sizeof(uint64_t));
         memcpy(&dumped[sizeof(uint64_t)], fat.raw(), fat.total_size());
         // now we should recreate new fs from this dump and check
-        lofat::fs fat_ref(fs_cluster_size, fs_cluster_count, fs_filename_max_length, dumped.data() + sizeof(uint64_t), lofat::EFsInitAction::Use);
+        std::vector<uint8_t> redumped; // to fill from file
+        FILE* dumpfile = nullptr;
+        fopen_s(&dumpfile, "test.fs", "wb");
+        if (dumpfile) {
+            size_t written = fwrite(dumped.data(), dumped.size(), 1, dumpfile);
+            assert(written == 1ULL);
+            fclose(dumpfile);
+            dumpfile = nullptr;
+            fopen_s(&dumpfile, "test.fs", "rb");
+            if (dumpfile) {
+                fseek(dumpfile, 0, SEEK_END);
+                uint32_t filesize = ftell(dumpfile);
+                fseek(dumpfile, 0, SEEK_SET);
+                assert(filesize == (uint32_t)dumped.size());
+                redumped.resize(filesize, 0);
+                fread(redumped.data(), filesize, 1, dumpfile);
+                fclose(dumpfile);
+            }
+        }
+        assert(redumped.size() == dumped.size());
+        uint64_t start_val = *((uint64_t*)redumped.data());
+        uint64_t end_val = *((uint64_t*)(redumped.data() + fat.total_size() + sizeof(uint64_t)));
+        assert(start_val == lofat::fs::start_marker && end_val == lofat::fs::end_marker);
+        lofat::fs fat_ref(fs_cluster_size, fs_cluster_count, fs_filename_max_length, redumped.data() + sizeof(uint64_t), lofat::EFsInitAction::Use);
         const uint32_t file_count = fat_ref.file_count();
         for (uint32_t i = 0; i < file_count; i++) {
             lofat::fileinfo fi = fat_ref.stat(filenames[i].c_str());
