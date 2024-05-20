@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Lowfat.cpp">
+    <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="crc32_ccit.c">
@@ -30,6 +30,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="lowfat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="lowfat_defines.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="lowfat_prelude.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

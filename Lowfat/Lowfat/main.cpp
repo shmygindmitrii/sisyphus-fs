@@ -12,73 +12,10 @@
 #include <chrono>
 
 #include "crc32_ccit.h"
+#define LOWFAT_ASSERT_ENABLED
 #include "lowfat.h"
 
 typedef uint8_t byte;
-
-#define LF_OK                                0
-#define LF_NONE                             -1
-
-#define LF_FILE_LOCKED                       1
-#define LF_FILE_READ                         2
-#define LF_FILE_WRITE                        4
-
-#define LF_ERROR_DATA_TABLE_ENDED           -2
-#define LF_ERROR_SPACE_ENDED                -3
-#define LF_ERROR_SYSTEM_SECTION             -4
-
-#define LF_ERROR_FILE_NOT_FOUND             -5
-#define LF_ERROR_FILE_ALREADY_OPENED        -6
-#define LF_ERROR_FILE_NAME_NULL             -7
-#define LF_ERROR_FILE_NAME_TOO_LONG         -8
-#define LF_ERROR_FILE_WRONG_MODE            -9
-#define LF_ERROR_FILE_READ_SIZE_OVERFLOW    -10
-
-// tail addition
-static inline void acquire_next_free(int32_t* table_next, int32_t* table_prev, int32_t* last_busy, int32_t* first_free) {
-    int32_t cur_free = *first_free;
-    assert(table_prev[cur_free] == LF_NONE);
-    *first_free = table_next[*first_free];
-    if (*first_free != LF_NONE) {
-        table_prev[*first_free] = LF_NONE;
-    }
-    assert(table_next[*last_busy] == LF_NONE);
-    table_prev[cur_free] = *last_busy;
-    table_next[*last_busy] = cur_free;
-    table_next[cur_free] = LF_NONE;
-    *last_busy = cur_free;
-}
-
-static inline void free_busy_range(int32_t* table_next, int32_t* table_prev, int32_t first, int32_t last, int32_t* last_busy, int32_t* first_free) {
-    // merge busy list segments
-    int32_t prev = table_prev[first];
-    int32_t next = table_next[last];
-    table_next[prev] = next; // never LF_NONE, because of system used nodes
-    if (next != LF_NONE) {
-        table_prev[next] = prev;
-    }
-    else {
-        *last_busy = prev;
-    }
-    // detach from busy chain and attach to free one in the beginning
-    table_prev[first] = LF_NONE;
-    table_next[last] = *first_free;
-    if (*first_free != LF_NONE) {
-        assert(table_prev[*first_free] == LF_NONE);
-        table_prev[*first_free] = last;
-    }
-    *first_free = first;
-}
-
-static inline uint32_t calculate_range_length(int32_t* table_next, int32_t first, int32_t last) {
-    assert(first >= 0 && last >= 0);
-    uint32_t node_count = 1;
-    while (first != last) {
-        first = table_next[first];
-        node_count++;
-    }
-    return node_count;
-}
 
 namespace lofat {
 #pragma pack(push, 1)
@@ -249,10 +186,10 @@ namespace lofat {
                 }
                 assert(fd == LF_ERROR_FILE_NOT_FOUND);
                 // LF_FILE_ERROR_NOT_FOUND - create new
-                acquire_next_free(_filename_table_next, _filename_table_prev, _filename_table_busy_tail, _filename_table_free_head);
+                lowfat_dl_acquire_next_free(_filename_table_next, _filename_table_prev, _filename_table_busy_tail, _filename_table_free_head);
                 fd = *_filename_table_busy_tail;
                 // put busy node to the head of list
-                acquire_next_free(_data_table_next, _data_table_prev, _data_table_busy_tail, _data_table_free_head);
+                lowfat_dl_acquire_next_free(_data_table_next, _data_table_prev, _data_table_busy_tail, _data_table_free_head);
                 (*_used_cluster_count)++;
                 // add to _fileinfos first free first_cluster
                 fileinfo fi(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
@@ -318,7 +255,7 @@ namespace lofat {
                         if ((*_data_table_free_head) == LF_NONE) {
                             return LF_ERROR_SPACE_ENDED;
                         }
-                        acquire_next_free(_data_table_next, _data_table_prev, _data_table_busy_tail, _data_table_free_head);
+                        lowfat_dl_acquire_next_free(_data_table_next, _data_table_prev, _data_table_busy_tail, _data_table_free_head);
                         fi.props->last_cluster = *_data_table_busy_tail;
                         fi.props->current_byte = 0;
                         mem_can_write = (*_cluster_size);
@@ -423,11 +360,11 @@ namespace lofat {
                 fileinfo fi(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
                 int32_t first_cluster = fi.props->first_cluster;
                 int32_t last_cluster = fi.props->last_cluster;
-                uint32_t freed_clusters = calculate_range_length(_data_table_next, first_cluster, last_cluster);
+                uint32_t freed_clusters = lowfat_dl_calculate_range_length(_data_table_next, first_cluster, last_cluster);
                 (*_used_cluster_count) -= freed_clusters;
-                free_busy_range(_data_table_next, _data_table_prev, first_cluster, last_cluster, _data_table_busy_tail, _data_table_free_head);
+                lowfat_dl_free_busy_range(_data_table_next, _data_table_prev, first_cluster, last_cluster, _data_table_busy_tail, _data_table_free_head);
                 // 
-                free_busy_range(_filename_table_next, _filename_table_prev, fd, fd, _filename_table_busy_tail, _filename_table_free_head);
+                lowfat_dl_free_busy_range(_filename_table_next, _filename_table_prev, fd, fd, _filename_table_busy_tail, _filename_table_free_head);
                 // reset properties
                 (*_used_memory) -= fi.props->size;
 #if _DEBUG

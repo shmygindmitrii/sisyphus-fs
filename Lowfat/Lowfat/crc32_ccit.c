@@ -1,4 +1,4 @@
-#include <inttypes.h>
+#include "lowfat_prelude.h"
 
 // based on 0xEDB88320 = (reverse bits of 0x04C11DB7 to revert polynomial order) << 5
 // calculated myself, but you may compare it with https://web.mit.edu/freebsd/head/sys/libkern/crc32.c
