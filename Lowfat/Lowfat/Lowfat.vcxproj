@@ -127,7 +127,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="crc32_ccit.c" />
+    <ClCompile Include="lowfat.c" />
     <ClCompile Include="Lowfat.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="crc32_ccit.h" />
+    <ClInclude Include="lowfat.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
