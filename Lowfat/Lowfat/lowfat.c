@@ -2,6 +2,8 @@
 #include "lowfat_defines.h"
 #include "lowfat.h"
 
+// double linked-list functions
+
 // tail addition
 void lowfat_dl_acquire_next_free(int32_t* table_next, int32_t* table_prev, int32_t* last_busy, int32_t* first_free) {
     int32_t cur_free = *first_free;
@@ -47,6 +49,11 @@ uint32_t lowfat_dl_calculate_range_length(int32_t* table_next, int32_t first, in
     }
     return node_count;
 }
+
+// fs
+
+const uint64_t LOWFAT_FS_DUMP_BEGIN_MARKER = 11348751673753212928ULL;   // this is random marker of fs beginning
+const uint64_t LOWFAT_FS_DUMP_END_MARKER = 907403631122679808ULL;       // this is random marker of fs ending
 
 lowfat_fs* lowfat_fs_create_instance(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* mem, void*(*__allocate)(size_t size)) {
     lowfat_fs* fs_ptr = (lowfat_fs*)__allocate(sizeof(lowfat_fs));
@@ -177,6 +184,7 @@ int32_t lowfat_fs_open_file(lowfat_fs* fs_ptr, const char* filename, char mode) 
     }
     return LF_ERROR_FILE_WRONG_MODE;
 }
+
 int32_t lowfat_fs_read_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd) {
     if (fd >= 0 && fd < (int32_t)fs_ptr->_system_used_clusters) {
         return LF_ERROR_SYSTEM_SECTION;
@@ -211,6 +219,7 @@ int32_t lowfat_fs_read_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size,
     }
     return LF_ERROR_FILE_NOT_FOUND;
 }
+
 int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd) {
     if (fd >= 0) {
         // always write new
@@ -255,6 +264,7 @@ int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size
         return -1;
     }
 }
+
 int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd) {
     if (fd >= 0) {
         const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*fs_ptr->_filename_length);
@@ -262,7 +272,9 @@ int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd) {
         fi.props->locked = 0;
         fi.props->current_cluster = fi.props->first_cluster;
         fi.props->current_byte = 0;
+#if LOWFAT_FS_FORBID_EMPTY_FILES
         LOWFAT_ASSERT(fi.props->size != 0);
+#endif
 #if _DEBUG
         printf("Close descriptor %d of size %u and crc32 = %u, remains %u\n", fd, fi.props->size, fi.props->crc32, lowfat_fs_free_available_mem_size(fs_ptr));
 #endif

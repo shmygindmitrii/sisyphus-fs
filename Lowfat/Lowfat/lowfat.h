@@ -77,13 +77,16 @@ typedef struct {
     int32_t* _filename_table_prev;
     int32_t* _data_table_next;
     int32_t* _data_table_prev;
-    //
+    // because this part do not change, no need to save it into _data
     uint32_t _total_size;
     uint32_t _system_used_size;
     uint32_t _system_used_clusters;
     uint32_t _last_system_cluster;
 } lowfat_fs;
 #pragma pack(pop)
+
+extern const uint64_t LOWFAT_FS_DUMP_BEGIN_MARKER;
+extern const uint64_t LOWFAT_FS_DUMP_END_MARKER;
 
 // fs instance creation/destruction
 lowfat_fs* lowfat_fs_create_instance(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* mem, void* (*__allocate)(size_t size));
