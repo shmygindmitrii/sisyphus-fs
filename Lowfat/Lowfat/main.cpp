@@ -14,6 +14,25 @@
 #include "crc32_ccit.h"
 #include "lowfat.h"
 
+#include "unordered_map"
+
+static std::unordered_map<intptr_t, size_t> allocated_table = {};
+static size_t allocated_total = 0;
+
+void* user_malloc(size_t size) {
+    void* ptr = malloc(size);
+    allocated_table[(intptr_t)ptr] = size;
+    allocated_total += size;
+    return ptr;
+}
+
+void user_free(void* ptr) {
+    assert(allocated_table.find((intptr_t)ptr) != allocated_table.end());
+    free(ptr);
+    allocated_total -= allocated_table[(intptr_t)ptr];
+    allocated_table.erase((intptr_t)ptr);
+}
+
 namespace lofat {
 #pragma pack(push, 1)
     class fs {
@@ -437,7 +456,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
             if (cur_empty_file_idx == (uint32_t)crcs.size()) {
                 // push_back new one
                 crcs.push_back(0);
-                CREATE_LOWFAT_FILENAME(fname, filesys.filename_length(), malloc);
+                CREATE_LOWFAT_FILENAME(fname, filesys.filename_length(), user_malloc);
                 filenames.push_back(fname);
             }
             std::vector<uint8_t> mem(random_filesize);
@@ -520,7 +539,7 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
     assert(mem_busy == filesys.system_used_size());
     // do not forget to remove everything
     for (uint32_t i = 0; i < filenames.size(); i++) {
-        DESTROY_LOWFAT_FILENAME_CONTENT(filenames[i], free);
+        DESTROY_LOWFAT_FILENAME_CONTENT(filenames[i], user_free);
     }
     printf("File system randomized RW test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, filesys.total_size());
 }
@@ -545,7 +564,7 @@ void test_fs_readback_c(lowfat_fs* fs_ptr, double test_period) {
             if (cur_empty_file_idx == (uint32_t)crcs.size()) {
                 // push_back new one
                 crcs.push_back(0);
-                CREATE_LOWFAT_FILENAME(fname, lowfat_fs_filename_length(fs_ptr), malloc);
+                CREATE_LOWFAT_FILENAME(fname, lowfat_fs_filename_length(fs_ptr), user_malloc);
                 filenames.push_back(fname);
             }
             std::vector<uint8_t> mem(random_filesize);
@@ -628,7 +647,7 @@ void test_fs_readback_c(lowfat_fs* fs_ptr, double test_period) {
     assert(mem_busy == lowfat_fs_system_used_size(fs_ptr));
     // do not forget to remove everything
     for (uint32_t i = 0; i < filenames.size(); i++) {
-        DESTROY_LOWFAT_FILENAME_CONTENT(filenames[i], free);
+        DESTROY_LOWFAT_FILENAME_CONTENT(filenames[i], user_free);
     }
     printf("File system randomized RW test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, lowfat_fs_total_size(fs_ptr));
 }
@@ -726,14 +745,15 @@ void test_randomized_rw(const float duration) {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    //lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), Lowfat_EFsInitAction::Reset);
-    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), malloc);
+    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), user_malloc);
     lowfat_fs_set_instance_addresses(fs_ptr);
     lowfat_fs_reset_instance(fs_ptr);
     // test begin
     test_fs_readback_c(fs_ptr, duration);
     // test end
-    lowfat_fs_destroy_instance(fs_ptr, free);
+    lowfat_fs_destroy_instance(fs_ptr, user_free);
+    LOWFAT_ASSERT(allocated_table.empty());
+    LOWFAT_ASSERT(allocated_total == 0);
 }
 
 void test_randomized_dump(const float duration) {
