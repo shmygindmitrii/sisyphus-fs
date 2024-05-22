@@ -12,68 +12,16 @@
 #include <chrono>
 
 #include "crc32_ccit.h"
-#define LOWFAT_ASSERT_ENABLED
 #include "lowfat.h"
-
-typedef uint8_t byte;
 
 namespace lofat {
 #pragma pack(push, 1)
-    struct fileprops {
-        uint64_t mtime = 0;
-        uint32_t size = 0;
-        uint32_t crc32 = CRC32_CCIT_DEFAULT_VALUE;
-        int32_t first_cluster = -1;
-        int32_t last_cluster = -1;
-        int32_t current_cluster = 0;   // not more than 65536 clusters
-        uint16_t current_byte = 0;     // not more than 65536 bytes in cluster
-        uint8_t locked = 0;
-
-        void reset() {
-            mtime = 0;
-            size = 0;
-            crc32 = CRC32_CCIT_DEFAULT_VALUE;
-            first_cluster = LF_NONE;
-            last_cluster = LF_NONE;
-            current_cluster = LF_NONE;
-            current_byte = 0;
-            locked = 0;
-        }
-    };
-
-    struct fileinfo {
-        char* name = nullptr;
-        fileprops* props = nullptr;
-
-        fileinfo(uint8_t* name_ptr, uint8_t* props_ptr): name((char*)name_ptr), props((fileprops*)props_ptr) {}
-    };
-
-    struct filename_t {
-        std::vector<char> name;
-        filename_t(uint32_t size) {
-            assert(size > 0);
-            name.resize(size);
-            std::fill(name.begin(), name.end(), '\0');
-        }
-        char* data() {
-            return &name[0];
-        }
-        uint32_t size() {
-            return (uint32_t)name.size();
-        }
-    };
-
-    enum class EFsInitAction {
-        Reset,
-        Use
-    };
-
     class fs {
     public:
         static constexpr uint64_t start_marker = 11348751673753212928ULL;   // this is random marker of fs beginning
         static constexpr uint64_t end_marker = 907403631122679808ULL;       // this is random marker of fs ending
         
-        fs(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* data, const EFsInitAction action): _data(data) {
+        fs(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* data, const Lowfat_EFsInitAction action): _data(data) {
             assert(data != nullptr);
             _total_size = cluster_count * cluster_size;
             // now we should have place for everything
@@ -85,14 +33,14 @@ namespace lofat {
             *_filename_length = filename_length;
             //
             const uint32_t fs_info_size = 6 * sizeof(uint32_t) + 4 * sizeof(int32_t); // just to mark difference
-            _system_used_size = fs_info_size + (sizeof(fileprops) + filename_length + sizeof(int32_t) * 4) * cluster_count;
+            _system_used_size = fs_info_size + (sizeof(lowfat_fileprops_t) + filename_length + sizeof(int32_t) * 4) * cluster_count;
             _system_used_clusters = _system_used_size / cluster_size + (int)(_system_used_size % cluster_size > 0);
             _last_system_cluster = _system_used_clusters - 1;
             //
             assert(_system_used_clusters < cluster_count);
             //
             this->set_addresses();
-            if (action == EFsInitAction::Reset) {
+            if (action == Lowfat_EFsInitAction::Reset) {
                 // nullify what it was
                 this->reset();
             }
@@ -108,7 +56,7 @@ namespace lofat {
             _data_table_free_head = _filename_table_busy_tail + 3;
             // 40 bytes used for common for fs values
             const uint32_t fileinfos_offset = 40;
-            const uint32_t fileinfo_stride = sizeof(fileprops) + *_filename_length;
+            const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + *_filename_length;
             const uint32_t fileinfo_size = fileinfo_stride * (*_cluster_count);
             _filename_table_next = reinterpret_cast<int32_t*>(&_data[fileinfos_offset + fileinfo_size]);
             _filename_table_prev = _filename_table_next + (*_cluster_count);
@@ -123,11 +71,11 @@ namespace lofat {
             *_used_cluster_count = _system_used_clusters;
             *_filename_table_busy_tail = LF_NONE;
             *_data_table_busy_tail = LF_NONE;
-            const uint32_t fileinfo_stride = sizeof(fileprops) + *_filename_length;
+            const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + *_filename_length;
             for (uint32_t i = 0; i < *_cluster_count; i++) {
                 memset(_filenames + i * fileinfo_stride, 0, *_filename_length);
-                fileprops* props_i = reinterpret_cast<fileprops*>(_fileprops + i * fileinfo_stride);
-                props_i->reset();
+                lowfat_fileprops_t* props_i = reinterpret_cast<lowfat_fileprops_t*>(_fileprops + i * fileinfo_stride);
+                RESET_LOWFAT_FILEPROPS((*props_i));
                 _filename_table_next[i] = i + 1;
                 _filename_table_prev[i] = i - 1;
                 _data_table_next[i] = i + 1;
@@ -141,7 +89,7 @@ namespace lofat {
 
             for (uint32_t i = 0; i < _system_used_clusters; i++) {
                 snprintf((char*)(_filenames + i * fileinfo_stride), (*_filename_length), "SYSTEM%d", i);
-                fileprops* props_i = reinterpret_cast<fileprops*>(_fileprops + i * fileinfo_stride);
+                lowfat_fileprops_t* props_i = reinterpret_cast<lowfat_fileprops_t*>(_fileprops + i * fileinfo_stride);
                 props_i->size = (*_cluster_size);
             }
 
@@ -164,10 +112,10 @@ namespace lofat {
             if (fd >= 0 && fd < (int32_t)_system_used_clusters) {
                 return LF_ERROR_SYSTEM_SECTION;
             }
-            const uint32_t fileinfo_stride = sizeof(fileprops) + (*_filename_length);
+            const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*_filename_length);
             if (mode == 'r') {
                 if (fd >= 0) {
-                    fileinfo fi(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                    CREATE_LOWFAT_FILEINFO(fi, _filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
                     fi.props->locked |= LF_FILE_READ;
                 }
                 return fd;
@@ -192,7 +140,7 @@ namespace lofat {
                 lowfat_dl_acquire_next_free(_data_table_next, _data_table_prev, _data_table_busy_tail, _data_table_free_head);
                 (*_used_cluster_count)++;
                 // add to _fileinfos first free first_cluster
-                fileinfo fi(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                CREATE_LOWFAT_FILEINFO(fi, _filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
                 sprintf_s(fi.name, (*_filename_length), filename);
                 fi.props->mtime = 0;
                 fi.props->size = 0;
@@ -210,9 +158,9 @@ namespace lofat {
             if (fd >= 0 && fd < (int32_t)_system_used_clusters) {
                 return LF_ERROR_SYSTEM_SECTION;
             }
-            const uint32_t fileinfo_stride = sizeof(fileprops) + (*_filename_length);
+            const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*_filename_length);
             if (fd > (int32_t)_last_system_cluster) {
-                fileinfo fi(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                CREATE_LOWFAT_FILEINFO(fi, _filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
                 uint32_t read_size = elem_size * count;
                 if (read_size > fi.props->size) {
                     return LF_ERROR_FILE_READ_SIZE_OVERFLOW;
@@ -245,8 +193,8 @@ namespace lofat {
                 // always write new
                 int32_t total_write_size = elem_size * count;
                 uint32_t buf_offset = 0;
-                const uint32_t fileinfo_stride = sizeof(fileprops) + (*_filename_length);
-                fileinfo fi(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*_filename_length);
+                CREATE_LOWFAT_FILEINFO(fi, _filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
                 while (total_write_size > 0) {
                     int32_t mem_can_write = (*_cluster_size) - fi.props->current_byte;
                     if (mem_can_write == 0) {
@@ -286,8 +234,8 @@ namespace lofat {
         }
         int32_t close(int32_t fd) {
             if (fd >= 0) {
-                const uint32_t fileinfo_stride = sizeof(fileprops) + (*_filename_length);
-                fileinfo fi(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*_filename_length);
+                CREATE_LOWFAT_FILEINFO(fi, _filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
                 fi.props->locked = 0;
                 fi.props->current_cluster = fi.props->first_cluster;
                 fi.props->current_byte = 0;
@@ -311,7 +259,7 @@ namespace lofat {
         int32_t find(const char* filename) const {
             // linear search
             int32_t busy_head = _filename_table_next[_last_system_cluster];
-            const uint32_t fileinfo_stride = sizeof(fileprops) + (*_filename_length);
+            const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*_filename_length);
             while (busy_head != LF_NONE) {
                 if (strcmp((char*)(_filenames + busy_head * fileinfo_stride), filename) == 0) {
                     return busy_head;
@@ -321,24 +269,27 @@ namespace lofat {
             return LF_ERROR_FILE_NOT_FOUND;
         }
 
-        const fileinfo stat(int32_t fd) const {
+        const lowfat_fileinfo_t stat(int32_t fd) const {
             assert(fd >= 0 && fd < (int32_t)(*_cluster_count));
             if (fd >= 0 && fd < (int32_t)(*_cluster_count)) {
-                const uint32_t fileinfo_stride = sizeof(fileprops) + (*_filename_length);
-                return fileinfo(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*_filename_length);
+                CREATE_LOWFAT_FILEINFO(fi, _filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                return fi;
             }
             else {
-                return fileinfo(nullptr, nullptr);
+                CREATE_LOWFAT_FILEINFO(empty, nullptr, nullptr);
+                return empty;
             }
         }
 
-        fileinfo stat(const char* name) const {
+        lowfat_fileinfo_t stat(const char* name) const {
             int fd = find(name);
             if (fd != LF_ERROR_FILE_NOT_FOUND) {
-                const uint32_t fileinfo_stride = sizeof(fileprops) + (*_filename_length);
-                return fileinfo(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*_filename_length);
+                CREATE_LOWFAT_FILEINFO(fi, _filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                return fi;
             }
-            fileinfo empty(nullptr, nullptr);
+            CREATE_LOWFAT_FILEINFO(empty, nullptr, nullptr);
             return empty;
         }
 
@@ -356,8 +307,8 @@ namespace lofat {
             assert(fd >= 0 && fd < (int32_t)*_cluster_count);
             if (fd >= 0 && fd < (int32_t)(*_cluster_count)) {
                 // busy clusters handle
-                const uint32_t fileinfo_stride = sizeof(fileprops) + (*_filename_length);
-                fileinfo fi(_filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
+                const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*_filename_length);
+                CREATE_LOWFAT_FILEINFO(fi, _filenames + fd * fileinfo_stride, _fileprops + fd * fileinfo_stride);
                 int32_t first_cluster = fi.props->first_cluster;
                 int32_t last_cluster = fi.props->last_cluster;
                 uint32_t freed_clusters = lowfat_dl_calculate_range_length(_data_table_next, first_cluster, last_cluster);
@@ -371,7 +322,7 @@ namespace lofat {
                 printf("Remove file '%s' of size %u\n", fi.name, fi.props->size);
 #endif
                 memset(fi.name, 0, *_filename_length);
-                fi.props->reset();
+                RESET_LOWFAT_FILEPROPS((*fi.props));
                 (*_file_count)--;
                 return freed_clusters;
             }
@@ -441,7 +392,7 @@ namespace lofat {
 #pragma pack(pop)
 }
 
-uint32_t fill_random_byte_buffer_and_calc_crc32(std::vector<byte>& mem) {
+uint32_t fill_random_byte_buffer_and_calc_crc32(std::vector<uint8_t>& mem) {
     for (uint32_t i = 0; i < (uint32_t)mem.size(); i++) {
         mem[i] = (uint8_t)(rand() % 256);
     }
@@ -468,7 +419,7 @@ struct MemAmount_t {
 void test_fs_readback(lofat::fs& filesys, double test_period) {
     
     uint32_t file_idx = 0;
-    std::vector<lofat::filename_t> filenames;
+    std::vector<lowfat_filename_t> filenames;
     std::vector<uint32_t> crcs;
     const auto start{ std::chrono::steady_clock::now() };
     auto end{ std::chrono::steady_clock::now() };
@@ -486,20 +437,21 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
             if (cur_empty_file_idx == (uint32_t)crcs.size()) {
                 // push_back new one
                 crcs.push_back(0);
-                filenames.push_back(lofat::filename_t(filesys.filename_length()));
+                CREATE_LOWFAT_FILENAME(fname, filesys.filename_length(), malloc);
+                filenames.push_back(fname);
             }
-            std::vector<byte> mem(random_filesize);
+            std::vector<uint8_t> mem(random_filesize);
             crcs[cur_empty_file_idx] = fill_random_byte_buffer_and_calc_crc32(mem);
-            lofat::filename_t& filename = filenames[cur_empty_file_idx];
-            snprintf(filename.data(), filename.size(), "test_file_%u_%u.bin", cycle_idx, cur_empty_file_idx);
+            lowfat_filename_t filename = filenames[cur_empty_file_idx];
+            snprintf(filename.name, filename.size, "test_file_%u_%u.bin", cycle_idx, cur_empty_file_idx);
 #if _DEBUG
-            printf("try to save \"%s\" of size %u\n", filename.data(), (uint32_t)random_filesize);
+            printf("try to save \"%s\" of size %u\n", filename.name, (uint32_t)random_filesize);
 #endif
-            int32_t fd = filesys.open(filename.data(), 'w');
+            int32_t fd = filesys.open(filename.name, 'w');
             uint32_t written = filesys.write(mem.data(), (uint32_t)mem.size(), 1, fd);
             filesys.close(fd);
             assert(written == 1);
-            lofat::fileinfo finfo = filesys.stat(fd);
+            lowfat_fileinfo_t finfo = filesys.stat(fd);
             assert(finfo.name != nullptr);
             assert(crcs[cur_empty_file_idx] == finfo.props->crc32);
             rewritten_memory += mem.size();
@@ -516,11 +468,11 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
             for (uint32_t i = 0; i < files_to_remove; i++) {
                 // need a vector of filenames
                 uint32_t cur_file_idx = rand() % files_written;
-                int fd = filesys.open(filenames[cur_file_idx].data(), 'r');
+                int fd = filesys.open(filenames[cur_file_idx].name, 'r');
                 assert(fd >= LF_OK);
-                lofat::fileinfo finfo = filesys.stat(fd);
+                lowfat_fileinfo_t finfo = filesys.stat(fd);
                 assert(finfo.name != nullptr);
-                std::vector<byte> mem(finfo.props->size);
+                std::vector<uint8_t> mem(finfo.props->size);
                 int32_t read = filesys.read(mem.data(), 1, (uint32_t)mem.size(), fd);
                 filesys.close(fd);
                 uint32_t test_crc32 = crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_CCIT_DEFAULT_VALUE);
@@ -529,14 +481,16 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
                 assert(freed_clusters == ((uint32_t)mem.size() / filesys.cluster_size() + ((uint32_t)mem.size() % filesys.cluster_size() > 0)));
                 //
 #if _DEBUG
-                printf("Removed '%s'\n", filenames[cur_file_idx].data());
+                printf("Removed '%s'\n", filenames[cur_file_idx].name);
 #endif
                 if (cur_file_idx != files_written - 1) {
-                    assert(strcmp(filenames[cur_file_idx].data(), filenames[cur_empty_file_idx - 1].data()) != 0);
+                    assert(strcmp(filenames[cur_file_idx].name, filenames[cur_empty_file_idx - 1].name) != 0);
+                    lowfat_filename_t tmp = filenames[cur_file_idx];
                     filenames[cur_file_idx] = filenames[files_written - 1];
+                    filenames[files_written - 1] = tmp;
                     crcs[cur_file_idx] = crcs[files_written - 1];
                 }
-                filenames[files_written - 1] = lofat::filename_t(filesys.filename_length());
+                filenames[files_written - 1].name[0] = '\0'; // do not destroy, but nullify name
                 crcs[files_written - 1] = 0;
                 files_written--;
             }
@@ -550,11 +504,11 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
     }
     // remove remained files
     for (uint32_t i = 0; i < cur_empty_file_idx; i++) {
-        int fd = filesys.open(filenames[i].data(), 'r');
+        int fd = filesys.open(filenames[i].name, 'r');
         assert(fd >= LF_OK);
-        lofat::fileinfo finfo = filesys.stat(fd);
+        lowfat_fileinfo_t finfo = filesys.stat(fd);
         assert(finfo.name != nullptr);
-        std::vector<byte> mem(finfo.props->size);
+        std::vector<uint8_t> mem(finfo.props->size);
         int32_t read = filesys.read(mem.data(), 1, (uint32_t)mem.size(), fd);
         filesys.close(fd);
         uint32_t test_crc32 = crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_CCIT_DEFAULT_VALUE);
@@ -564,6 +518,10 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
     }
     uint32_t mem_busy = filesys.cluster_count() * filesys.cluster_size() - (uint32_t)filesys.free_mem_size();
     assert(mem_busy == filesys.system_used_size());
+    // do not forget to remove everything
+    for (uint32_t i = 0; i < filenames.size(); i++) {
+        DESTROY_LOWFAT_FILENAME_CONTENT(filenames[i], free);
+    }
     printf("File system randomized RW test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, filesys.total_size());
 }
 
@@ -572,7 +530,7 @@ void test_crc32() {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), lofat::EFsInitAction::Reset);
+    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), Lowfat_EFsInitAction::Reset);
     //
     const char test_abc[] = "ABC";
     const char test_d[] = "D";
@@ -585,7 +543,7 @@ void test_crc32() {
         fat.write((uint8_t*)test_abc, 3, 1, abc_fd);
         fat.write((uint8_t*)test_d, 1, 1, abc_fd);
         fat.close(abc_fd);
-        const lofat::fileinfo& fst = fat.stat(abc_fd);
+        const lowfat_fileinfo_t fst = fat.stat(abc_fd);
         printf("File remainder lookuped: %#010x\n", fst.props->crc32);
     }
 }
@@ -595,7 +553,7 @@ void test_simple_rw() {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), lofat::EFsInitAction::Reset);
+    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), Lowfat_EFsInitAction::Reset);
 
     const int max_user_file_count = fat.cluster_count() - fat.system_used_clusters();
     for (int i = 0; i < max_user_file_count; i++) {
@@ -647,7 +605,7 @@ void test_simple_rw() {
     }
     {
         int32_t text_fd = fat.open("saved_text.txt", 'r');
-        lofat::fileinfo file_info = fat.stat(text_fd);
+        lowfat_fileinfo_t file_info = fat.stat(text_fd);
         char* text = new char[file_info.props->size];
         fat.read((uint8_t*)text, 1, file_info.props->size, text_fd);
         fat.close(text_fd);
@@ -660,7 +618,7 @@ void test_randomized_rw(const float duration) {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), lofat::EFsInitAction::Reset);
+    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), Lowfat_EFsInitAction::Reset);
 
     test_fs_readback(fat, duration);
 }
@@ -670,7 +628,7 @@ void test_randomized_dump(const float duration) {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), lofat::EFsInitAction::Reset);
+    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), Lowfat_EFsInitAction::Reset);
     const auto start{ std::chrono::steady_clock::now() };
     auto end{ std::chrono::steady_clock::now() };
     std::chrono::duration<double> elapsed = end - start;
@@ -682,7 +640,7 @@ void test_randomized_dump(const float duration) {
         size_t available = fat.free_available_mem_size();
         while (available) {
             size_t random_filesize = (rand() % fat.total_size()) % (available - fat.cluster_size() / 4) + fat.cluster_size() / 4;
-            std::vector<byte> mem(random_filesize, 0);
+            std::vector<uint8_t> mem(random_filesize, 0);
             uint32_t crc = fill_random_byte_buffer_and_calc_crc32(mem);
             char filename[fs_filename_max_length] = {};
             snprintf(filename, fs_filename_max_length, "test_file_%d.bin", file_idx);
@@ -696,7 +654,7 @@ void test_randomized_dump(const float duration) {
             filenames.push_back(filename);
         }
         // finished fullfilling of fs
-        std::vector<byte> dumped(fat.total_size() + sizeof(uint64_t) * 2, 0);
+        std::vector<uint8_t> dumped(fat.total_size() + sizeof(uint64_t) * 2, 0);
         memcpy(&dumped[0], &fat.start_marker, sizeof(uint64_t));
         memcpy(&dumped[sizeof(uint64_t) + fat.total_size()], &fat.end_marker, sizeof(uint64_t));
         memcpy(&dumped[sizeof(uint64_t)], fat.raw(), fat.total_size());
@@ -724,10 +682,10 @@ void test_randomized_dump(const float duration) {
         uint64_t start_val = *((uint64_t*)redumped.data());
         uint64_t end_val = *((uint64_t*)(redumped.data() + fat.total_size() + sizeof(uint64_t)));
         assert(start_val == lofat::fs::start_marker && end_val == lofat::fs::end_marker);
-        lofat::fs fat_ref(fs_cluster_size, fs_cluster_count, fs_filename_max_length, redumped.data() + sizeof(uint64_t), lofat::EFsInitAction::Use);
+        lofat::fs fat_ref(fs_cluster_size, fs_cluster_count, fs_filename_max_length, redumped.data() + sizeof(uint64_t), Lowfat_EFsInitAction::Use);
         const uint32_t file_count = fat_ref.file_count();
         for (uint32_t i = 0; i < file_count; i++) {
-            lofat::fileinfo fi = fat_ref.stat(filenames[i].c_str());
+            lowfat_fileinfo_t fi = fat_ref.stat(filenames[i].c_str());
             int32_t fd = fat_ref.open(filenames[i].c_str(), 'r');
             std::vector<uint8_t> data(fi.props->size);
             fat_ref.read(data.data(), 1, fi.props->size, fd);
