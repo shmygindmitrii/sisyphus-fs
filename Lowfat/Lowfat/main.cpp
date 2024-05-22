@@ -525,6 +525,114 @@ void test_fs_readback(lofat::fs& filesys, double test_period) {
     printf("File system randomized RW test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, filesys.total_size());
 }
 
+void test_fs_readback_c(lowfat_fs* fs_ptr, double test_period) {
+    uint32_t file_idx = 0;
+    std::vector<lowfat_filename_t> filenames;
+    std::vector<uint32_t> crcs;
+    const auto start{ std::chrono::steady_clock::now() };
+    auto end{ std::chrono::steady_clock::now() };
+    std::chrono::duration<double> elapsed = end - start;
+    uint32_t cur_empty_file_idx = 0;
+    uint32_t cycle_idx = 0;
+    uint32_t writes_count = 0;
+    MemAmount_t rewritten_memory{};
+
+    while (elapsed.count() < test_period) {
+        size_t available = lowfat_fs_free_available_mem_size(fs_ptr); // not tight, free clusters * cluster_size
+        if (available) {
+            // have a place to write
+            size_t random_filesize = (rand() % lowfat_fs_total_size(fs_ptr)) % (available - lowfat_fs_cluster_size(fs_ptr) / 4) + lowfat_fs_cluster_size(fs_ptr) / 4;
+            if (cur_empty_file_idx == (uint32_t)crcs.size()) {
+                // push_back new one
+                crcs.push_back(0);
+                CREATE_LOWFAT_FILENAME(fname, lowfat_fs_filename_length(fs_ptr), malloc);
+                filenames.push_back(fname);
+            }
+            std::vector<uint8_t> mem(random_filesize);
+            crcs[cur_empty_file_idx] = fill_random_byte_buffer_and_calc_crc32(mem);
+            lowfat_filename_t filename = filenames[cur_empty_file_idx];
+            snprintf(filename.name, filename.size, "test_file_%u_%u.bin", cycle_idx, cur_empty_file_idx);
+#if _DEBUG
+            printf("try to save \"%s\" of size %u\n", filename.name, (uint32_t)random_filesize);
+#endif
+            int32_t fd = lowfat_fs_open_file(fs_ptr, filename.name, 'w');
+            uint32_t written = lowfat_fs_write_file(fs_ptr, mem.data(), (uint32_t)mem.size(), 1, fd);
+            lowfat_fs_close_file(fs_ptr, fd);
+            assert(written == 1);
+            lowfat_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
+            assert(finfo.name != nullptr);
+            assert(crcs[cur_empty_file_idx] == finfo.props->crc32);
+            rewritten_memory += mem.size();
+            cur_empty_file_idx++;
+            writes_count++;
+        }
+        else {
+            // need to free place
+            uint32_t files_written = lowfat_fs_file_count(fs_ptr);
+            uint32_t files_to_remove = (rand() % (files_written - 1)) + 1;
+#if _DEBUG
+            printf("Space finished, free procedure for %u files of %u \n", files_to_remove, files_written);
+#endif
+            for (uint32_t i = 0; i < files_to_remove; i++) {
+                // need a vector of filenames
+                uint32_t cur_file_idx = rand() % files_written;
+                int fd = lowfat_fs_open_file(fs_ptr, filenames[cur_file_idx].name, 'r');
+                assert(fd >= LF_OK);
+                lowfat_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
+                assert(finfo.name != nullptr);
+                std::vector<uint8_t> mem(finfo.props->size);
+                int32_t read = lowfat_fs_read_file(fs_ptr, mem.data(), 1, (uint32_t)mem.size(), fd);
+                lowfat_fs_close_file(fs_ptr, fd);
+                uint32_t test_crc32 = crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_CCIT_DEFAULT_VALUE);
+                assert(test_crc32 == crcs[cur_file_idx] && test_crc32 == finfo.props->crc32);
+                uint32_t freed_clusters = lowfat_fs_remove_file(fs_ptr, fd);
+                assert(freed_clusters == ((uint32_t)mem.size() / lowfat_fs_cluster_size(fs_ptr) + ((uint32_t)mem.size() % lowfat_fs_cluster_size(fs_ptr) > 0)));
+                //
+#if _DEBUG
+                printf("Removed '%s'\n", filenames[cur_file_idx].name);
+#endif
+                if (cur_file_idx != files_written - 1) {
+                    assert(strcmp(filenames[cur_file_idx].name, filenames[cur_empty_file_idx - 1].name) != 0);
+                    lowfat_filename_t tmp = filenames[cur_file_idx];
+                    filenames[cur_file_idx] = filenames[files_written - 1];
+                    filenames[files_written - 1] = tmp;
+                    crcs[cur_file_idx] = crcs[files_written - 1];
+                }
+                filenames[files_written - 1].name[0] = '\0'; // do not destroy, but nullify name
+                crcs[files_written - 1] = 0;
+                files_written--;
+            }
+            cur_empty_file_idx -= files_to_remove;
+        }
+        //
+        cycle_idx++;
+        //
+        end = std::chrono::steady_clock::now();
+        elapsed = end - start;
+    }
+    // remove remained files
+    for (uint32_t i = 0; i < cur_empty_file_idx; i++) {
+        int fd = lowfat_fs_open_file(fs_ptr, filenames[i].name, 'r');
+        assert(fd >= LF_OK);
+        lowfat_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
+        assert(finfo.name != nullptr);
+        std::vector<uint8_t> mem(finfo.props->size);
+        int32_t read = lowfat_fs_read_file(fs_ptr, mem.data(), 1, (uint32_t)mem.size(), fd);
+        lowfat_fs_close_file(fs_ptr, fd);
+        uint32_t test_crc32 = crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_CCIT_DEFAULT_VALUE);
+        assert(test_crc32 == crcs[i] && test_crc32 == finfo.props->crc32);
+        uint32_t freed_clusters = lowfat_fs_remove_file(fs_ptr, fd);
+        assert(freed_clusters == (mem.size() / lowfat_fs_cluster_size(fs_ptr) + (mem.size() % lowfat_fs_cluster_size(fs_ptr) > 0)));
+    }
+    uint32_t mem_busy = lowfat_fs_cluster_count(fs_ptr) * lowfat_fs_cluster_size(fs_ptr) - (uint32_t)lowfat_fs_free_mem_size(fs_ptr);
+    assert(mem_busy == lowfat_fs_system_used_size(fs_ptr));
+    // do not forget to remove everything
+    for (uint32_t i = 0; i < filenames.size(); i++) {
+        DESTROY_LOWFAT_FILENAME_CONTENT(filenames[i], free);
+    }
+    printf("File system randomized RW test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, lowfat_fs_total_size(fs_ptr));
+}
+
 void test_crc32() {
     const uint32_t fs_cluster_size = 4 * 1024;
     const uint32_t fs_cluster_count = 1024;
@@ -618,9 +726,14 @@ void test_randomized_rw(const float duration) {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), Lowfat_EFsInitAction::Reset);
-
-    test_fs_readback(fat, duration);
+    //lofat::fs fat(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), Lowfat_EFsInitAction::Reset);
+    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), malloc);
+    lowfat_fs_set_instance_addresses(fs_ptr);
+    lowfat_fs_reset_instance(fs_ptr);
+    // test begin
+    test_fs_readback_c(fs_ptr, duration);
+    // test end
+    lowfat_fs_destroy_instance(fs_ptr, free);
 }
 
 void test_randomized_dump(const float duration) {
@@ -715,8 +828,8 @@ extern "C" {
     int main()
     {
         srand((uint32_t)time(nullptr));
-        //test_randomized_rw(240.0f);
-        test_randomized_dump(10.0f);
+        test_randomized_rw(10.0f);
+        //test_randomized_dump(10.0f);
         return 0;
     }
 }
