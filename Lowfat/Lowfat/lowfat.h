@@ -80,10 +80,10 @@ extern const uint64_t LOWFAT_FS_DUMP_BEGIN_MARKER;
 extern const uint64_t LOWFAT_FS_DUMP_END_MARKER;
 
 // fs instance creation/destruction
-lowfat_fs* lowfat_fs_create_instance(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* mem, void* (*__allocate)(size_t size));
+lowfat_fs* lowfat_fs_create_instance(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* mem);
 void lowfat_fs_set_instance_addresses(lowfat_fs* fs_ptr);
 void lowfat_fs_reset_instance(lowfat_fs* fs_ptr);
-void lowfat_fs_destroy_instance(lowfat_fs* fs_ptr, void(*__deallocate)(void* ptr));
+void lowfat_fs_destroy_instance(lowfat_fs* fs_ptr);
 // fs instance info
 uint32_t lowfat_fs_free_mem_size(lowfat_fs* fs_ptr);
 uint32_t lowfat_fs_free_available_mem_size(lowfat_fs* fs_ptr);

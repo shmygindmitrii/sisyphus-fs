@@ -2,6 +2,17 @@
 #include "lowfat_defines.h"
 #include "lowfat.h"
 
+#ifdef LOWFAT_FS_CUSTOM_ALLOCATOR
+extern void* user_malloc(size_t size);
+extern void user_free(void*);
+#define LOWFAT_FS_ALLOC user_malloc
+#define LOWFAT_FS_FREE user_free
+#else
+#pragma message("Warning: use default malloc and free")
+#define LOWFAT_FS_ALLOC malloc
+#define LOWFAT_FS_FREE free
+#endif
+
 // double linked-list functions
 
 // tail addition
@@ -55,8 +66,8 @@ uint32_t lowfat_dl_calculate_range_length(int32_t* table_next, int32_t first, in
 const uint64_t LOWFAT_FS_DUMP_BEGIN_MARKER = 11348751673753212928ULL;   // this is random marker of fs beginning
 const uint64_t LOWFAT_FS_DUMP_END_MARKER = 907403631122679808ULL;       // this is random marker of fs ending
 
-lowfat_fs* lowfat_fs_create_instance(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* mem, void*(*__allocate)(size_t size)) {
-    lowfat_fs* fs_ptr = (lowfat_fs*)__allocate(sizeof(lowfat_fs));
+lowfat_fs* lowfat_fs_create_instance(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* mem) {
+    lowfat_fs* fs_ptr = (lowfat_fs*)LOWFAT_FS_ALLOC(sizeof(lowfat_fs));
     fs_ptr->_data = mem;
     fs_ptr->_total_size = cluster_count * cluster_size;
     fs_ptr->_cluster_size = (uint32_t*)fs_ptr->_data;
@@ -126,8 +137,8 @@ void lowfat_fs_reset_instance(lowfat_fs* fs_ptr) {
     fs_ptr->_data_table_prev[*fs_ptr->_data_table_free_head] = LF_NONE;
 }
 
-void lowfat_fs_destroy_instance(lowfat_fs* fs_ptr, void(*__deallocate)(void* ptr)) {
-    __deallocate(fs_ptr);
+void lowfat_fs_destroy_instance(lowfat_fs* fs_ptr) {
+    LOWFAT_FS_FREE(fs_ptr);
 }
 
 int32_t lowfat_fs_open_file(lowfat_fs* fs_ptr, const char* filename, char mode) {

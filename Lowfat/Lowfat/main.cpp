@@ -10,14 +10,32 @@
 #include <bitset>
 #include <ctime>
 #include <chrono>
-
-#include "crc32_ccit.h"
-#include "lowfat.h"
-
-#include "unordered_map"
-
+#include <unordered_map>
 #include <type_traits>
 #include <variant>
+
+#include "crc32_ccit.h"
+
+static std::unordered_map<intptr_t, size_t> allocated_table = {};
+static size_t allocated_total = 0;
+
+extern "C" {
+    void* user_malloc(size_t size) {
+        void* ptr = malloc(size);
+        allocated_table[(intptr_t)ptr] = size;
+        allocated_total += size;
+        return ptr;
+    }
+
+    void user_free(void* ptr) {
+        assert(allocated_table.find((intptr_t)ptr) != allocated_table.end());
+        allocated_total -= allocated_table[(intptr_t)ptr];
+        allocated_table.erase((intptr_t)ptr);
+        free(ptr);
+    }
+}
+
+#include "lowfat.h"
 
 enum class EResultType {
     Ok,
@@ -78,23 +96,6 @@ struct Result {
         return this->is_ok();
     }
 };
-
-static std::unordered_map<intptr_t, size_t> allocated_table = {};
-static size_t allocated_total = 0;
-
-void* user_malloc(size_t size) {
-    void* ptr = malloc(size);
-    allocated_table[(intptr_t)ptr] = size;
-    allocated_total += size;
-    return ptr;
-}
-
-void user_free(void* ptr) {
-    assert(allocated_table.find((intptr_t)ptr) != allocated_table.end());
-    free(ptr);
-    allocated_total -= allocated_table[(intptr_t)ptr];
-    allocated_table.erase((intptr_t)ptr);
-}
 
 uint32_t fill_random_byte_buffer_and_calc_crc32(std::vector<uint8_t>& mem) {
     for (uint32_t i = 0; i < (uint32_t)mem.size(); i++) {
@@ -291,7 +292,7 @@ void test_crc32() {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), user_malloc);
+    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data());
     lowfat_fs_set_instance_addresses(fs_ptr);
     lowfat_fs_reset_instance(fs_ptr);
     //
@@ -311,7 +312,7 @@ void test_crc32() {
         const lowfat_fileinfo_t fst = lowfat_fs_file_stat(fs_ptr, abc_fd);
         printf("File remainder lookuped: %#010x\n", fst.props->crc32);
     }
-    lowfat_fs_destroy_instance(fs_ptr, user_free);
+    lowfat_fs_destroy_instance(fs_ptr);
     LOWFAT_ASSERT(allocated_table.empty());
     LOWFAT_ASSERT(allocated_total == 0);
 }
@@ -321,7 +322,7 @@ void test_simple_rw() {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), user_malloc);
+    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data());
     lowfat_fs_set_instance_addresses(fs_ptr);
     lowfat_fs_reset_instance(fs_ptr);
 
@@ -381,7 +382,7 @@ void test_simple_rw() {
         lowfat_fs_close_file(fs_ptr, text_fd);
         delete[] text;
     }
-    lowfat_fs_destroy_instance(fs_ptr, user_free);
+    lowfat_fs_destroy_instance(fs_ptr);
     LOWFAT_ASSERT(allocated_table.empty());
     LOWFAT_ASSERT(allocated_total == 0);
 }
@@ -391,13 +392,13 @@ void test_randomized_rw(const float duration) {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), user_malloc);
+    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data());
     lowfat_fs_set_instance_addresses(fs_ptr);
     lowfat_fs_reset_instance(fs_ptr);
     // test begin
     test_fs_readback(fs_ptr, duration);
     // test end
-    lowfat_fs_destroy_instance(fs_ptr, user_free);
+    lowfat_fs_destroy_instance(fs_ptr);
     LOWFAT_ASSERT(allocated_table.empty());
     LOWFAT_ASSERT(allocated_total == 0);
 }
@@ -407,7 +408,7 @@ void test_randomized_dump(const float duration) {
     const uint32_t fs_cluster_count = 1024;
     const uint32_t fs_filename_max_length = 32;
     std::vector<uint8_t> fs_mem(fs_cluster_count * fs_cluster_size, 0);
-    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data(), user_malloc);
+    lowfat_fs* fs_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, fs_mem.data());
     lowfat_fs_set_instance_addresses(fs_ptr);
     lowfat_fs_reset_instance(fs_ptr);
 
@@ -457,7 +458,7 @@ void test_randomized_dump(const float duration) {
         uint64_t end_val = *((uint64_t*)(redumped.data() + lowfat_fs_total_size(fs_ptr) + sizeof(uint64_t)));
         assert(start_val == LOWFAT_FS_DUMP_BEGIN_MARKER && end_val == LOWFAT_FS_DUMP_END_MARKER);
 
-        lowfat_fs* fs_ref_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, redumped.data() + sizeof(uint64_t), user_malloc);
+        lowfat_fs* fs_ref_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, redumped.data() + sizeof(uint64_t));
         lowfat_fs_set_instance_addresses(fs_ref_ptr);
         // no reset here, because want to reuse
         check_lowfat_fs_files(fs_ref_ptr, crcs, filenames, (uint32_t)filenames.size());
@@ -475,10 +476,10 @@ void test_randomized_dump(const float duration) {
         end = std::chrono::steady_clock::now();
         elapsed = end - start;
         cycle_idx++;
-        lowfat_fs_destroy_instance(fs_ref_ptr, user_free);
+        lowfat_fs_destroy_instance(fs_ref_ptr);
     }
     printf("File system randomized dump test finished: %u cycles of fullfilling and working over dumped fs\n", cycle_idx);
-    lowfat_fs_destroy_instance(fs_ptr, user_free);
+    lowfat_fs_destroy_instance(fs_ptr);
     LOWFAT_ASSERT(allocated_table.empty());
     LOWFAT_ASSERT(allocated_total == 0);
 }
