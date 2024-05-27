@@ -16,6 +16,69 @@
 
 #include "unordered_map"
 
+#include <type_traits>
+#include <variant>
+
+enum class EResultType {
+    Ok,
+    Error
+};
+
+template <typename T, EResultType R>
+struct ResultValue {
+    T value;
+    static constexpr EResultType type = R;
+    ResultValue() {}
+    explicit ResultValue(const T& arg) : value(arg) {}
+    explicit ResultValue(T&& arg) noexcept : value(std::move(arg)) {}
+};
+
+template<typename O, typename E>
+struct Result {
+    static_assert(!std::is_convertible<O, E>::value);
+
+    using OkType = typename ResultValue<O, EResultType::Ok>;
+    using ErrType = typename ResultValue<E, EResultType::Error>;
+
+    OkType ok;
+    ErrType error;
+    EResultType type;
+
+    explicit Result(const O& value) : ok(value), type(EResultType::Ok) {}
+    explicit Result(O&& value) noexcept : ok(std::move(value)), type(EResultType::Ok) {}
+    explicit Result(const E& value) : error(value), type(EResultType::Error) {}
+    explicit Result(E&& value) noexcept : error(std::move(value)), type(EResultType::Error) {}
+
+    // non-copyable
+    Result(const Result&) = delete;
+    Result& operator=(const Result&) = delete;
+
+    Result(Result&&) = default;
+    Result& operator=(Result&&) = default;
+
+    bool is_ok() const {
+        return type == EResultType::Ok;
+    }
+
+    bool is_err() const {
+        return type == EResultType::Error;
+    }
+
+    const O& unwrap_ok() const {
+        assert(type == EResultType::Ok);
+        return ok.value;
+    }
+
+    const E& unwrap_err() const {
+        assert(type == EResultType::Error);
+        return error.value;
+    }
+
+    operator bool() const {
+        return this->is_ok();
+    }
+};
+
 static std::unordered_map<intptr_t, size_t> allocated_table = {};
 static size_t allocated_total = 0;
 
