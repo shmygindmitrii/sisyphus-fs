@@ -460,7 +460,7 @@ void test_randomized_dump(const float duration) {
         lowfat_fs* fs_ref_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, redumped.data() + sizeof(uint64_t), user_malloc);
         lowfat_fs_set_instance_addresses(fs_ref_ptr);
         // no reset here, because want to reuse
-        check_lowfat_fs_files(fs_ref_ptr, crcs, filenames, filenames.size());
+        check_lowfat_fs_files(fs_ref_ptr, crcs, filenames, (uint32_t)filenames.size());
         for (uint32_t i = 0; i < filenames.size(); i++) {
             lowfat_fs_remove_file_str(fs_ptr, filenames[i].c_str());
             lowfat_fs_remove_file_str(fs_ref_ptr, filenames[i].c_str());
