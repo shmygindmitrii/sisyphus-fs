@@ -120,6 +120,97 @@ struct MemAmount_t {
     }
 };
 
+static enum class out_of_space_t {} out_of_space = {};
+
+struct write_info_t {
+    uint32_t filesize = 0;
+    uint32_t crc = 0;
+    std::string fname = {};
+};
+
+Result<write_info_t, out_of_space_t> write_to_lowfat_fs_instance_random_file(lowfat_fs* fs_ptr) {
+    static size_t s_call_idx = 0;
+    size_t available = lowfat_fs_free_available_mem_size(fs_ptr); // not tight, free clusters * cluster_size
+    if (available) {
+        // have a place to write
+        write_info_t wrinfo = {};
+        wrinfo.filesize = (uint32_t)((rand() % lowfat_fs_total_size(fs_ptr)) % (available - lowfat_fs_cluster_size(fs_ptr) / 4) + lowfat_fs_cluster_size(fs_ptr) / 4);
+        std::vector<uint8_t> mem(wrinfo.filesize);
+        wrinfo.crc = fill_random_byte_buffer_and_calc_crc32(mem);
+        char tmp[64];
+        snprintf(tmp, 64, "test_file_%" PRIu64 ".bin", s_call_idx++);
+        wrinfo.fname = tmp;
+#if _DEBUG
+        printf("try to save \"%s\" of size %u\n", wrinfo.fname.c_str(), wrinfo.filesize);
+#endif
+        int32_t fd = lowfat_fs_open_file(fs_ptr, wrinfo.fname.c_str(), 'w');
+        uint32_t written = lowfat_fs_write_file(fs_ptr, mem.data(), (uint32_t)mem.size(), 1, fd);
+        lowfat_fs_close_file(fs_ptr, fd);
+        assert(written == 1);
+        lowfat_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
+        assert(finfo.name != nullptr);
+        assert(wrinfo.crc == finfo.props->crc32);
+        return Result<write_info_t, out_of_space_t>(wrinfo);
+    }
+    return Result<write_info_t, out_of_space_t>(out_of_space);
+}
+
+static enum class lowfat_fs_wrong_file_count_t {} lowfat_fs_wrong_file_count = {};
+struct lowfat_fs_wrong_file_crc_t {
+    uint32_t crc = CRC32_CCIT_DEFAULT_VALUE;
+};
+
+static enum class lowfat_fs_file_not_found_t {} lowfat_fs_file_not_found = {};
+struct lowfat_fs_error_t {
+    int32_t code = 0;
+};
+
+using lowfat_fs_err = std::variant<lowfat_fs_wrong_file_count_t, lowfat_fs_wrong_file_crc_t, lowfat_fs_file_not_found_t, lowfat_fs_error_t>;
+
+Result<uint32_t, lowfat_fs_err> check_lowfat_fs_single_file(lowfat_fs* fs_ptr, const std::string& filename, uint32_t crc) {
+    lowfat_fileinfo_t finfo = lowfat_fs_file_stat_str(fs_ptr, filename.c_str());
+    LOWFAT_ASSERT(finfo.name != NULL);
+    if (finfo.name == NULL) {
+        return Result<uint32_t, lowfat_fs_err>(lowfat_fs_file_not_found);
+    }
+    std::vector<uint8_t> file_content(finfo.props->size, 0);
+    int32_t fd = lowfat_fs_open_file(fs_ptr, filename.c_str(), 'r');
+    int32_t read_ret = lowfat_fs_read_file(fs_ptr, file_content.data(), finfo.props->size, 1, fd);
+    LOWFAT_ASSERT(read_ret == LF_OK);
+    if (read_ret != LF_OK) {
+        lowfat_fs_close_file(fs_ptr, fd);
+        lowfat_fs_error_t err{ read_ret };
+        return Result<uint32_t, lowfat_fs_err>(err);
+    }
+    lowfat_fs_close_file(fs_ptr, fd);
+    uint32_t crc32_recalculated = crc32_ccit_update(file_content.data(), finfo.props->size, CRC32_CCIT_DEFAULT_VALUE);
+    LOWFAT_ASSERT(crc32_recalculated == crc && crc32_recalculated == finfo.props->crc32);
+    if (crc32_recalculated != crc || crc32_recalculated != finfo.props->crc32) {
+        return Result<uint32_t, lowfat_fs_err>(lowfat_fs_wrong_file_crc_t{ crc32_recalculated });
+    }
+    return Result < uint32_t, lowfat_fs_err>(1);
+}
+
+Result<uint32_t, lowfat_fs_err> check_lowfat_fs_files(lowfat_fs* fs_ptr, std::vector<uint32_t>& crcs, std::vector<std::string>& filenames, uint32_t count) {
+    if (*fs_ptr->_file_count != count) {
+        return Result<uint32_t, lowfat_fs_err>(lowfat_fs_wrong_file_count);
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        const std::string& fname = filenames[i];
+        uint32_t ref_crc = crcs[i];
+        auto r = check_lowfat_fs_single_file(fs_ptr, fname, ref_crc);
+        if (r) {
+#if _DEBUG
+            printf("[lowfat_fs][check] file checked: %s\n", fname.c_str());
+#endif
+        }
+        else {
+            return r;
+        }
+    }
+    return Result<uint32_t, lowfat_fs_err>(count);
+}
+
 void test_fs_readback(lowfat_fs* fs_ptr, double test_period) {
     uint32_t file_idx = 0;
     std::vector<lowfat_filename_t> filenames;
