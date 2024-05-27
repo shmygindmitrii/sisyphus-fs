@@ -42,15 +42,6 @@ typedef struct {
 // only create is needed
 #define CREATE_LOWFAT_FILEINFO(finfo, name_ptr, props_ptr) lowfat_fileinfo_t finfo; finfo.name = (char*)(name_ptr); finfo.props = (lowfat_fileprops_t*)(props_ptr);
 
-// should be carefully deallocated
-typedef struct {
-    char* name ;
-    uint32_t size;
-} lowfat_filename_t;
-
-#define CREATE_LOWFAT_FILENAME(fname, length, __allocate) lowfat_filename_t fname; fname.name = (char*)__allocate(length); memset(fname.name, 0, length); fname.size = length;
-#define DESTROY_LOWFAT_FILENAME_CONTENT(fname, __deallocate) LOWFAT_ASSERT(fname.name != NULL); __deallocate(fname.name); fname.size = 0;
-
 enum Lowfat_EFsInitAction {
     Reset,
     Use
