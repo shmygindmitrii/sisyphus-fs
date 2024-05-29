@@ -280,15 +280,20 @@ int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd) {
     if (fd >= 0) {
         const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*fs_ptr->_filename_length);
         CREATE_LOWFAT_FILEINFO(fi, fs_ptr->_filenames + fd * fileinfo_stride, fs_ptr->_fileprops + fd * fileinfo_stride);
-        fi.props->locked = 0;
         fi.props->current_cluster = fi.props->first_cluster;
         fi.props->current_byte = 0;
 #if LOWFAT_FS_FORBID_EMPTY_FILES
         LOWFAT_ASSERT(fi.props->size != 0);
 #endif
 #if _DEBUG
-        printf("Close descriptor %d of size %u and crc32 = %u, remains %u\n", fd, fi.props->size, fi.props->crc32, lowfat_fs_free_available_mem_size(fs_ptr));
+        if (fi.props->locked & LF_FILE_WRITE) {
+            printf("Close descriptor %d of size %u and crc32 = %u, space remains = %u bytes\n", fd, fi.props->size, fi.props->crc32, lowfat_fs_free_available_mem_size(fs_ptr));
+        }
+        else {
+            printf("Close descriptor %d of size %u and crc32 = %u\n", fd, fi.props->size, fi.props->crc32);
+        }
 #endif
+        fi.props->locked &= LF_FILE_LRW_INV_MASK;
         return LF_OK;
     }
     return fd;

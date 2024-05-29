@@ -7,6 +7,8 @@
 #define LF_FILE_READ                         2
 #define LF_FILE_WRITE                        4
 
+#define LF_FILE_LRW_INV_MASK                (0xFF ^ (LF_FILE_LOCKED | LF_FILE_READ | LF_FILE_WRITE))
+
 #define LF_ERROR_DATA_TABLE_ENDED           -2
 #define LF_ERROR_SPACE_ENDED                -3
 #define LF_ERROR_SYSTEM_SECTION             -4
