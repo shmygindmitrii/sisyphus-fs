@@ -3,7 +3,7 @@
 // based on 0xEDB88320 = (reverse bits of 0x04C11DB7 to revert polynomial order) << 5
 // calculated myself, but you may compare it with https://web.mit.edu/freebsd/head/sys/libkern/crc32.c
 
-/*
+/**
 void generate_crc32_lookup_table(uint32_t revkey, uint32_t* table) {
     for (uint32_t i = 0; i < 256; i++) {
         uint32_t cur = i;
@@ -13,7 +13,7 @@ void generate_crc32_lookup_table(uint32_t revkey, uint32_t* table) {
         table[i] = cur;
     }
 }
-*/
+**/
 
 const uint32_t CRC32_CCIT_DEFAULT_VALUE = 0xFFFFFFFF;
 
@@ -52,7 +52,7 @@ const uint32_t crc32_ccit_lookup_table[256] = {
     0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
 
-uint32_t crc32_ccit_update(uint8_t* data, uint32_t size, uint32_t crc) {
+uint32_t crc32_ccit_update(const uint8_t* const data, size_t size, uint32_t crc) {
     for (uint32_t i = 0; i < size; i++) {
         crc = crc32_ccit_lookup_table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
     }
