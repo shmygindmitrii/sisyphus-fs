@@ -156,17 +156,34 @@ Result<write_info_t, out_of_space_t> write_to_lowfat_fs_instance_random_file(low
     return Result<write_info_t, out_of_space_t>(out_of_space);
 }
 
-static enum class lowfat_fs_wrong_file_count_t {} lowfat_fs_wrong_file_count = {};
+enum class lowfat_fs_wrong_file_count_t {}; 
+static const lowfat_fs_wrong_file_count_t lowfat_fs_wrong_file_count = {};
+
 struct lowfat_fs_wrong_file_crc_t {
     uint32_t crc = CRC32_CCIT_DEFAULT_VALUE;
 };
 
-static enum class lowfat_fs_file_not_found_t {} lowfat_fs_file_not_found = {};
+enum class lowfat_fs_file_not_found_t {}; 
+static const lowfat_fs_file_not_found_t lowfat_fs_file_not_found = {};
+
 struct lowfat_fs_error_t {
     int32_t code = 0;
 };
 
-using lowfat_fs_err = std::variant<lowfat_fs_wrong_file_count_t, lowfat_fs_wrong_file_crc_t, lowfat_fs_file_not_found_t, lowfat_fs_error_t>;
+struct lowfat_fs_wrong_file_size_t {
+    uint32_t size = 0;
+};
+
+struct lowfat_fs_wrong_cluster_count_t {
+    uint32_t count = 0;
+};
+
+using lowfat_fs_err = std::variant<lowfat_fs_wrong_file_count_t
+                                 , lowfat_fs_wrong_file_crc_t
+                                 , lowfat_fs_file_not_found_t
+                                 , lowfat_fs_error_t
+                                 , lowfat_fs_wrong_file_size_t
+                                 , lowfat_fs_wrong_cluster_count_t>;
 
 Result<uint32_t, lowfat_fs_err> check_lowfat_fs_single_file(lowfat_fs* fs_ptr, const std::string& filename, uint32_t crc) {
     lowfat_fileinfo_t finfo = lowfat_fs_file_stat_str(fs_ptr, filename.c_str());
