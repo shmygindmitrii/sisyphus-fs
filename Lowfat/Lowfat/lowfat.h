@@ -99,7 +99,7 @@ int32_t lowfat_fs_open_file(lowfat_fs* fs_ptr, const char* filename, char mode);
 int32_t lowfat_fs_read_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd);
 int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd);
 int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd);
-int32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int32_t fd);
+uint32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int32_t fd);
 int32_t lowfat_fs_remove_file_str(lowfat_fs* fs_ptr, const char* filename);
 int32_t lowfat_fs_find_file(lowfat_fs* fs_ptr, const char* filename);
 lowfat_fileinfo_t lowfat_fs_file_stat(lowfat_fs* fs_ptr, int32_t fd);

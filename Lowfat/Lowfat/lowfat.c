@@ -51,7 +51,7 @@ void lowfat_dl_free_busy_range(int32_t* table_next, int32_t* table_prev, int32_t
     *first_free = first;
 }
 
-uint32_t lowfat_dl_calculate_range_length(int32_t* table_next, int32_t first, int32_t last) {
+uint32_t lowfat_dl_calculate_range_length(const int32_t* const table_next, int32_t first, int32_t last) {
     LOWFAT_ASSERT(first >= 0 && last >= 0);
     uint32_t node_count = 1;
     while (first != last) {
@@ -231,7 +231,7 @@ int32_t lowfat_fs_read_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size,
     return LF_ERROR_FILE_NOT_FOUND;
 }
 
-int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd) {
+int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, const uint8_t* const buf, uint32_t elem_size, uint32_t count, int32_t fd) {
     if (fd >= 0) {
         // always write new
         int32_t total_write_size = elem_size * count;
@@ -294,7 +294,7 @@ int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd) {
     return fd;
 }
 
-int32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int fd) {
+uint32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int fd) {
     LOWFAT_ASSERT(fd >= 0 && fd < (int32_t)*fs_ptr->_cluster_count);
     if (fd >= 0 && fd < (int32_t)*fs_ptr->_cluster_count) {
         // busy clusters handle
@@ -315,10 +315,11 @@ int32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int fd) {
         memset(fi.name, 0, *fs_ptr->_filename_length);
         RESET_LOWFAT_FILEPROPS((*fi.props));
         (*fs_ptr->_file_count)--;
+        lowfat_fs_increment_touched_clusters_count(fs_ptr, 0); // add _system_used_clusters if not added already
         return freed_clusters;
     }
     else {
-        return -1;
+        return 0;
     }
 }
 
@@ -356,7 +357,7 @@ lowfat_fileinfo_t lowfat_fs_file_stat(lowfat_fs* fs_ptr, int32_t fd) {
     }
 }
 
-uint32_t lowfat_fs_free_mem_size(lowfat_fs* fs_ptr) {
+uint32_t lowfat_fs_free_mem_size(const lowfat_fs* const fs_ptr) {
     // real free space, that includes unused clusters memory
     return fs_ptr->_total_size - (*fs_ptr->_used_memory);
 }
@@ -377,30 +378,30 @@ uint32_t lowfat_fs_free_available_mem_size(lowfat_fs* fs_ptr) {
     return (*fs_ptr->_cluster_count - *fs_ptr->_used_cluster_count) * (*fs_ptr->_cluster_size);
 }
 
-uint32_t lowfat_fs_file_count(lowfat_fs* fs_ptr) {
+uint32_t lowfat_fs_file_count(const lowfat_fs* const fs_ptr) {
     return *fs_ptr->_file_count;
 }
 
-uint32_t lowfat_fs_filename_length(lowfat_fs* fs_ptr) {
+uint32_t lowfat_fs_filename_length(const lowfat_fs* const fs_ptr) {
     return *fs_ptr->_filename_length;
 }
 
-uint32_t lowfat_fs_cluster_size(lowfat_fs* fs_ptr) {
+uint32_t lowfat_fs_cluster_size(const lowfat_fs* const fs_ptr) {
     return *fs_ptr->_cluster_size;
 }
 
-uint32_t lowfat_fs_cluster_count(lowfat_fs* fs_ptr) {
+uint32_t lowfat_fs_cluster_count(const lowfat_fs* const fs_ptr) {
     return *fs_ptr->_cluster_count;
 }
 
-uint32_t lowfat_fs_total_size(lowfat_fs* fs_ptr) {
+uint32_t lowfat_fs_total_size(const lowfat_fs* const fs_ptr) {
     return (*fs_ptr->_cluster_count) * (*fs_ptr->_cluster_size);
 }
 
-uint32_t lowfat_fs_system_used_clusters(lowfat_fs* fs_ptr) {
+uint32_t lowfat_fs_system_used_clusters(const lowfat_fs* const fs_ptr) {
     return fs_ptr->_system_used_clusters;
 }
 
-uint32_t lowfat_fs_system_used_size(lowfat_fs* fs_ptr) {
+uint32_t lowfat_fs_system_used_size(const lowfat_fs* const fs_ptr) {
     return fs_ptr->_system_used_size;
 }
