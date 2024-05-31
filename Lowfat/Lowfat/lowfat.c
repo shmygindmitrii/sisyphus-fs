@@ -306,7 +306,7 @@ int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd) {
 #if LOWFAT_FS_FORBID_EMPTY_FILES
         LOWFAT_ASSERT(fi.props->size != 0);
 #endif
-#if _DEBUG
+#if LF_VERBOSITY == LF_VERBOSITY_DETAILED
         if (fi.props->locked & LF_FILE_WRITE) {
             printf("Close descriptor %d of size %u and crc32 = %u, space remains = %u bytes\n", fd, fi.props->size, fi.props->crc32, lowfat_fs_free_available_mem_size(fs_ptr));
         }
@@ -335,7 +335,7 @@ uint32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int32_t fd) {
         lowfat_dl_free_busy_range(fs_ptr->_filename_table_next, fs_ptr->_filename_table_prev, fd, fd, fs_ptr->_filename_table_busy_tail, fs_ptr->_filename_table_free_head);
         // reset properties
         (*fs_ptr->_used_memory) -= fi.props->size;
-#if _DEBUG
+#if LF_VERBOSITY == LF_VERBOSITY_DETAILED
         printf("Remove file '%s' of size %u\n", fi.name, fi.props->size);
 #endif
         memset(fi.name, 0, *fs_ptr->_filename_length);

@@ -235,7 +235,7 @@ Result<uint32_t, lowfat_fs_err> check_lowfat_fs_files(lowfat_fs* fs_ptr, std::ve
         auto r = check_lowfat_fs_single_file(fs_ptr, fname, ref_size, ref_crc);
         if (r) {
 #if _DEBUG
-            printf("[lowfat_fs][check] file checked: %s\n", fname.c_str());
+            printf("[lowfat_fs] file checked: %s\n", fname.c_str());
 #endif
         }
         else {
