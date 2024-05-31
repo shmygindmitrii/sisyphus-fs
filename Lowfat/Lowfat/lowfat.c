@@ -76,9 +76,10 @@ lowfat_fs* lowfat_fs_create_instance(uint32_t cluster_size, uint32_t cluster_cou
     *(fs_ptr->_cluster_size) = cluster_size;
     *(fs_ptr->_cluster_count) = cluster_count;
     *(fs_ptr->_filename_length) = filename_length;
-    fs_ptr->_system_used_size = 6 * sizeof(uint32_t) + 4 * sizeof(int32_t) + (sizeof(lowfat_fileprops_t) + filename_length + sizeof(int32_t) * 4) * cluster_count;
-    fs_ptr->_system_used_clusters = fs_ptr->_system_used_size / cluster_size + (int)(fs_ptr->_system_used_size % cluster_size > 0);
+    fs_ptr->_system_used_size = 6 * sizeof(uint32_t) + 4 * sizeof(int32_t) + (sizeof(lowfat_fileprops_t) + filename_length + sizeof(int32_t) * 4 + sizeof(uint16_t)) * cluster_count;
+    fs_ptr->_system_used_clusters = fs_ptr->_system_used_size / cluster_size + (fs_ptr->_system_used_size % cluster_size > 0);
     fs_ptr->_last_system_cluster = fs_ptr->_system_used_clusters - 1;
+    fs_ptr->_clusters_touched = 0;
     LOWFAT_ASSERT(fs_ptr->_system_used_clusters < cluster_count);
     return fs_ptr;
 }
@@ -95,12 +96,13 @@ void lowfat_fs_set_instance_addresses(lowfat_fs* fs_ptr) {
     const uint32_t fileinfos_offset = 40;
     const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*fs_ptr->_filename_length);
     const uint32_t fileinfo_size = fileinfo_stride * (*fs_ptr->_cluster_count);
+    fs_ptr->_filenames = fs_ptr->_data + fileinfos_offset;
+    fs_ptr->_fileprops = fs_ptr->_data + fileinfos_offset + (*fs_ptr->_filename_length);
     fs_ptr->_filename_table_next = (int32_t*)(fs_ptr->_data + fileinfos_offset + fileinfo_size);
     fs_ptr->_filename_table_prev = fs_ptr->_filename_table_next + (*fs_ptr->_cluster_count);
     fs_ptr->_data_table_next = fs_ptr->_filename_table_prev + (*fs_ptr->_cluster_count);
     fs_ptr->_data_table_prev = fs_ptr->_data_table_next + (*fs_ptr->_cluster_count);
-    fs_ptr->_filenames = fs_ptr->_data + fileinfos_offset;
-    fs_ptr->_fileprops = fs_ptr->_data + fileinfos_offset + (*fs_ptr->_filename_length);
+    fs_ptr->_cluster_flags = (uint16_t*)(fs_ptr->_data_table_prev + (*fs_ptr->_cluster_count));
 }
 
 void lowfat_fs_reset_instance(lowfat_fs* fs_ptr) {
@@ -117,6 +119,7 @@ void lowfat_fs_reset_instance(lowfat_fs* fs_ptr) {
         fs_ptr->_filename_table_prev[i] = i - 1;
         fs_ptr->_data_table_next[i] = i + 1;
         fs_ptr->_data_table_prev[i] = i - 1;
+        fs_ptr->_cluster_flags[i] = 0;
     }
     fs_ptr->_filename_table_next[*fs_ptr->_cluster_count - 1] = LF_NONE;
     *fs_ptr->_filename_table_busy_tail = fs_ptr->_last_system_cluster;
@@ -139,6 +142,13 @@ void lowfat_fs_reset_instance(lowfat_fs* fs_ptr) {
 
 void lowfat_fs_destroy_instance(lowfat_fs* fs_ptr) {
     LOWFAT_FS_FREE(fs_ptr);
+}
+
+static inline void lowfat_fs_increment_touched_clusters_count(lowfat_fs* fs_ptr, uint32_t clusters) {
+    if (fs_ptr->_clusters_touched == 0) {
+        fs_ptr->_clusters_touched += fs_ptr->_system_used_clusters;
+    }
+    fs_ptr->_clusters_touched += clusters;
 }
 
 int32_t lowfat_fs_open_file(lowfat_fs* fs_ptr, const char* filename, char mode) {
@@ -190,7 +200,12 @@ int32_t lowfat_fs_open_file(lowfat_fs* fs_ptr, const char* filename, char mode) 
         fi.props->current_cluster = *fs_ptr->_data_table_busy_tail;
         fi.props->current_byte = 0;
         fi.props->locked = (LF_FILE_LOCKED | LF_FILE_WRITE);
+        fs_ptr->_cluster_flags[fi.props->last_cluster] |= LF_CLUSTER_TOUCHED;
+#if LF_VERBOSITY == LF_VERBOSITY_MAX
+        printf("OPEN[%d]: touched cluster %d \n", *fs_ptr->_file_count, fi.props->last_cluster);
+#endif
         (*fs_ptr->_file_count)++;
+        lowfat_fs_increment_touched_clusters_count(fs_ptr, 1);
         return fd;
     }
     return LF_ERROR_FILE_WRONG_MODE;
@@ -238,6 +253,7 @@ int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, const uint8_t* const buf, uint32
         uint32_t buf_offset = 0;
         const uint32_t fileinfo_stride = sizeof(lowfat_fileprops_t) + (*fs_ptr->_filename_length);
         CREATE_LOWFAT_FILEINFO(fi, fs_ptr->_filenames + fd * fileinfo_stride, fs_ptr->_fileprops + fd * fileinfo_stride);
+        const uint32_t prev_used_clusters = *fs_ptr->_used_cluster_count;
         while (total_write_size > 0) {
             int32_t mem_can_write = (*fs_ptr->_cluster_size) - fi.props->current_byte;
             if (mem_can_write == 0) {
@@ -251,6 +267,10 @@ int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, const uint8_t* const buf, uint32
                 fi.props->current_byte = 0;
                 mem_can_write = (*fs_ptr->_cluster_size);
                 (*fs_ptr->_used_cluster_count)++;
+                fs_ptr->_cluster_flags[fi.props->last_cluster] |= LF_CLUSTER_TOUCHED;
+#if LF_VERBOSITY == LF_VERBOSITY_MAX
+                printf("WRITE[%d]: touched cluster %d \n", fd, fi.props->last_cluster);
+#endif
             }
             if (mem_can_write >= total_write_size) {
                 mem_can_write = total_write_size;
@@ -266,6 +286,7 @@ int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, const uint8_t* const buf, uint32
         }
         fi.props->crc32 = crc32_ccit_update(buf, elem_size * count, fi.props->crc32);
         (*fs_ptr->_used_memory) += elem_size * count;
+        lowfat_fs_increment_touched_clusters_count(fs_ptr, (*fs_ptr->_used_cluster_count) - prev_used_clusters);
         return count;
     }
     else {
@@ -299,7 +320,7 @@ int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd) {
     return fd;
 }
 
-uint32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int fd) {
+uint32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int32_t fd) {
     LOWFAT_ASSERT(fd >= 0 && fd < (int32_t)*fs_ptr->_cluster_count);
     if (fd >= 0 && fd < (int32_t)*fs_ptr->_cluster_count) {
         // busy clusters handle
@@ -378,7 +399,7 @@ lowfat_fileinfo_t lowfat_fs_file_stat_str(lowfat_fs* fs_ptr, const char* name) {
     return empty;
 }
 
-uint32_t lowfat_fs_free_available_mem_size(lowfat_fs* fs_ptr) {
+uint32_t lowfat_fs_free_available_mem_size(const lowfat_fs* const fs_ptr) {
     // real writable amount of memory
     return (*fs_ptr->_cluster_count - *fs_ptr->_used_cluster_count) * (*fs_ptr->_cluster_size);
 }
@@ -409,4 +430,67 @@ uint32_t lowfat_fs_system_used_clusters(const lowfat_fs* const fs_ptr) {
 
 uint32_t lowfat_fs_system_used_size(const lowfat_fs* const fs_ptr) {
     return fs_ptr->_system_used_size;
+}
+
+int32_t lowfat_fs_walk_over_changed_data(lowfat_fs* fs_ptr, size_t(*procedure)(void* data, size_t size)) {
+    uint32_t touched = fs_ptr->_clusters_touched;
+    if (fs_ptr->_clusters_touched) {
+        int32_t continual_range_start = LF_NONE;
+        int32_t continual_range_stop = LF_NONE;
+        int32_t cluster_next = fs_ptr->_last_system_cluster + 1;
+        while (fs_ptr->_clusters_touched > fs_ptr->_system_used_clusters) {
+            if (fs_ptr->_cluster_flags[cluster_next] & LF_CLUSTER_TOUCHED) {
+                if (continual_range_start == LF_NONE) {
+                    continual_range_start = cluster_next;
+                    continual_range_stop = cluster_next;
+                }
+                else {
+                    continual_range_stop += 1;
+                }
+                fs_ptr->_clusters_touched--;
+                fs_ptr->_cluster_flags[cluster_next] ^= LF_CLUSTER_TOUCHED;
+            }
+            else {
+                if (continual_range_start != LF_NONE) {
+                    uint32_t cluster_size = *fs_ptr->_cluster_size;
+                    procedure((void*)(fs_ptr->_data + continual_range_start * cluster_size), (continual_range_stop - continual_range_start + 1) * cluster_size);
+                    continual_range_start = LF_NONE;
+                    continual_range_stop = LF_NONE;
+                }
+            }
+            cluster_next++;
+        }
+        if (continual_range_start != LF_NONE) {
+            uint32_t cluster_size = *fs_ptr->_cluster_size;
+            procedure((void*)(fs_ptr->_data + continual_range_start * cluster_size), (continual_range_stop - continual_range_start + 1) * cluster_size);
+        }
+        // write system clusters to the beginning, but after everything is finished
+        uint32_t cluster_size = *fs_ptr->_cluster_size;
+        fs_ptr->_clusters_touched -= fs_ptr->_system_used_clusters;
+        procedure((void*)fs_ptr->_data, fs_ptr->_system_used_clusters * cluster_size);
+    }
+    return touched;
+}
+
+int32_t lowfat_fs_get_descriptor(const lowfat_fs* const fs_ptr, uint32_t file_idx) {
+    if (file_idx < *fs_ptr->_file_count) {
+        int32_t cur_fd = *fs_ptr->_filename_table_busy_tail;
+        while (file_idx) {
+            cur_fd = fs_ptr->_filename_table_prev[cur_fd];
+            file_idx--;
+        }
+        return cur_fd;
+    }
+    return LF_NONE;
+}
+
+uint32_t lowfat_fs_walk_over_all_files(const lowfat_fs* const fs_ptr, void* arg, void(*procedure)(int32_t fd, void* arg)) {
+    if (*fs_ptr->_file_count) {
+        int32_t cur_fd = *fs_ptr->_filename_table_busy_tail;
+        while (cur_fd != LF_NONE && (uint32_t)cur_fd < *fs_ptr->_cluster_count && (uint32_t)cur_fd > fs_ptr->_last_system_cluster) {
+            procedure(cur_fd, arg);
+            cur_fd = fs_ptr->_filename_table_prev[cur_fd];
+        }
+    }
+    return *fs_ptr->_file_count;
 }

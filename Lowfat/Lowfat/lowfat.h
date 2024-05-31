@@ -10,7 +10,7 @@ extern "C" {
 
 void lowfat_dl_acquire_next_free(int32_t * table_next, int32_t * table_prev, int32_t * last_busy, int32_t * first_free);
 void lowfat_dl_free_busy_range(int32_t* table_next, int32_t* table_prev, int32_t first, int32_t last, int32_t* last_busy, int32_t* first_free);
-uint32_t lowfat_dl_calculate_range_length(int32_t* table_next, int32_t first, int32_t last);
+uint32_t lowfat_dl_calculate_range_length(const int32_t* const table_next, int32_t first, int32_t last);
 
 #pragma pack(push, 1)
 typedef struct {
@@ -61,6 +61,7 @@ typedef struct {
     int32_t* _filename_table_free_head; // 0
     int32_t* _data_table_busy_tail; // LF_NONE
     int32_t* _data_table_free_head; // 0
+    uint16_t* _cluster_flags; // 0
     // arrays of cluster_count elements
     uint8_t* _filenames;
     uint8_t* _fileprops;
@@ -73,6 +74,7 @@ typedef struct {
     uint32_t _system_used_size;
     uint32_t _system_used_clusters;
     uint32_t _last_system_cluster;
+    uint32_t _clusters_touched;
 } lowfat_fs;
 #pragma pack(pop)
 
@@ -85,25 +87,30 @@ void lowfat_fs_set_instance_addresses(lowfat_fs* fs_ptr);
 void lowfat_fs_reset_instance(lowfat_fs* fs_ptr);
 void lowfat_fs_destroy_instance(lowfat_fs* fs_ptr);
 // fs instance info
-uint32_t lowfat_fs_free_mem_size(lowfat_fs* fs_ptr);
-uint32_t lowfat_fs_free_available_mem_size(lowfat_fs* fs_ptr);
-uint32_t lowfat_fs_file_count(lowfat_fs* fs_ptr);
-uint32_t lowfat_fs_filename_length(lowfat_fs* fs_ptr);
-uint32_t lowfat_fs_cluster_size(lowfat_fs* fs_ptr);
-uint32_t lowfat_fs_cluster_count(lowfat_fs* fs_ptr);
-uint32_t lowfat_fs_total_size(lowfat_fs* fs_ptr);
-uint32_t lowfat_fs_system_used_clusters(lowfat_fs* fs_ptr);
-uint32_t lowfat_fs_system_used_size(lowfat_fs* fs_ptr);
+uint32_t lowfat_fs_free_mem_size(const lowfat_fs* const fs_ptr);
+uint32_t lowfat_fs_free_available_mem_size(const lowfat_fs* const fs_ptr);
+uint32_t lowfat_fs_file_count(const lowfat_fs* const fs_ptr);
+uint32_t lowfat_fs_filename_length(const lowfat_fs* const fs_ptr);
+uint32_t lowfat_fs_cluster_size(const lowfat_fs* const fs_ptr);
+uint32_t lowfat_fs_cluster_count(const lowfat_fs* const fs_ptr);
+uint32_t lowfat_fs_total_size(const lowfat_fs* const fs_ptr);
+uint32_t lowfat_fs_system_used_clusters(const lowfat_fs* const fs_ptr);
+uint32_t lowfat_fs_system_used_size(const lowfat_fs* const fs_ptr);
 // file API
 int32_t lowfat_fs_open_file(lowfat_fs* fs_ptr, const char* filename, char mode);
 int32_t lowfat_fs_read_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd);
-int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size, uint32_t count, int32_t fd);
+int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, const uint8_t* const buf, uint32_t elem_size, uint32_t count, int32_t fd);
 int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd);
 uint32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int32_t fd);
 int32_t lowfat_fs_remove_file_str(lowfat_fs* fs_ptr, const char* filename);
 int32_t lowfat_fs_find_file(lowfat_fs* fs_ptr, const char* filename);
 lowfat_fileinfo_t lowfat_fs_file_stat(lowfat_fs* fs_ptr, int32_t fd);
 lowfat_fileinfo_t lowfat_fs_file_stat_str(lowfat_fs* fs_ptr, const char* name);
+// abstract walking over changed data, including system sectors
+int32_t lowfat_fs_walk_over_changed_data(lowfat_fs* fs_ptr, size_t(*procedure)(void* data, size_t size));
+// walk over all files if needed
+int32_t lowfat_fs_get_descriptor(const lowfat_fs* const fs_ptr, uint32_t file_idx);
+uint32_t lowfat_fs_walk_over_all_files(const lowfat_fs* const fs_ptr, void* arg, void(*procedure)(int32_t fd, void* data));
 
 #ifdef __cplusplus
 }
