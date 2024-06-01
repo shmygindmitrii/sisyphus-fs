@@ -8,9 +8,9 @@
 extern "C" {
 #endif
 
-void lowfat_dl_acquire_next_free(int32_t * table_next, int32_t * table_prev, int32_t * last_busy, int32_t * first_free);
-void lowfat_dl_free_busy_range(int32_t* table_next, int32_t* table_prev, int32_t first, int32_t last, int32_t* last_busy, int32_t* first_free);
-uint32_t lowfat_dl_calculate_range_length(const int32_t* const table_next, int32_t first, int32_t last);
+void lowfat_fs_dl_acquire_next_free(int32_t * table_next, int32_t * table_prev, int32_t * last_busy, int32_t * first_free);
+void lowfat_fs_dl_free_busy_range(int32_t* table_next, int32_t* table_prev, int32_t first, int32_t last, int32_t* last_busy, int32_t* first_free);
+uint32_t lowfat_fs_dl_calculate_range_length(const int32_t* const table_next, int32_t first, int32_t last);
 
 #pragma pack(push, 1)
 typedef struct {
@@ -22,23 +22,18 @@ typedef struct {
     int32_t current_cluster;
     uint16_t current_byte;
     uint8_t locked;
-} lowfat_fileprops_t;
+} lowfat_fs_fileprops_t;
 
-void lowfat_fs_reset_fileprops(lowfat_fileprops_t* props);
+void lowfat_fs_reset_fileprops(lowfat_fs_fileprops_t* props);
 
 // always refers to a place inside data, never allocates/deallocates anything, just assign and use
 typedef struct {
     char* name;
-    lowfat_fileprops_t* props;
-} lowfat_fileinfo_t;
+    lowfat_fs_fileprops_t* props;
+} lowfat_fs_fileinfo_t;
 
 // only create is needed, it is purely assignment of correct addresses into a single variable
-lowfat_fileinfo_t lowfat_fs_create_fileinfo(void* name_ptr, void* props_ptr);
-
-enum Lowfat_EFsInitAction {
-    Reset,
-    Use
-};
+lowfat_fs_fileinfo_t lowfat_fs_create_fileinfo(void* name_ptr, void* props_ptr);
 
 typedef struct {
     // this is the only real data
@@ -94,8 +89,8 @@ int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd);
 uint32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int32_t fd);
 int32_t lowfat_fs_remove_file_str(lowfat_fs* fs_ptr, const char* filename);
 int32_t lowfat_fs_find_file(lowfat_fs* fs_ptr, const char* filename);
-lowfat_fileinfo_t lowfat_fs_file_stat(lowfat_fs* fs_ptr, int32_t fd);
-lowfat_fileinfo_t lowfat_fs_file_stat_str(lowfat_fs* fs_ptr, const char* name);
+lowfat_fs_fileinfo_t lowfat_fs_file_stat(lowfat_fs* fs_ptr, int32_t fd);
+lowfat_fs_fileinfo_t lowfat_fs_file_stat_str(lowfat_fs* fs_ptr, const char* name);
 // abstract walking over changed data, including system sectors
 int32_t lowfat_fs_walk_over_changed_data(lowfat_fs* fs_ptr, size_t(*procedure)(void* data, size_t size));
 // walk over all files if needed

@@ -148,7 +148,7 @@ Result<write_info_t, out_of_space_t> write_to_lowfat_fs_instance_random_file(low
         uint32_t written = lowfat_fs_write_file(fs_ptr, mem.data(), (uint32_t)mem.size(), 1, fd);
         lowfat_fs_close_file(fs_ptr, fd);
         assert(written == 1);
-        lowfat_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
+        lowfat_fs_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
         assert(finfo.name != nullptr);
         assert(wrinfo.crc == finfo.props->crc32);
         return Result<write_info_t, out_of_space_t>(wrinfo);
@@ -187,7 +187,7 @@ using lowfat_fs_err = std::variant<lowfat_fs_wrong_file_count_t
 
 Result<uint32_t, lowfat_fs_err> check_lowfat_fs_single_file(lowfat_fs* fs_ptr, std::string_view filename, uint32_t size, uint32_t crc) {
     // check if exists
-    lowfat_fileinfo_t finfo = lowfat_fs_file_stat_str(fs_ptr, filename.data());
+    lowfat_fs_fileinfo_t finfo = lowfat_fs_file_stat_str(fs_ptr, filename.data());
     assert(finfo.name != nullptr);
     if (finfo.name == nullptr) {
         return Result<uint32_t, lowfat_fs_err>(lowfat_fs_file_not_found);
@@ -304,7 +304,7 @@ void test_fs_readback(lowfat_fs* fs_ptr, double test_period) {
                 auto pre_remove_test_res = check_lowfat_fs_single_file(fs_ptr, filenames[cur_file_idx], sizes[cur_file_idx], crcs[cur_file_idx]);
                 assert(pre_remove_test_res.is_ok());
                 int32_t fd = lowfat_fs_find_file(fs_ptr, filenames[cur_file_idx].c_str());
-                lowfat_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
+                lowfat_fs_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
                 uint32_t fsize = finfo.props->size;
                 uint32_t freed_clusters = lowfat_fs_remove_file(fs_ptr, fd);
                 assert(freed_clusters == (fsize / lowfat_fs_cluster_size(fs_ptr) + (fsize % lowfat_fs_cluster_size(fs_ptr) > 0)));
@@ -332,7 +332,7 @@ void test_fs_readback(lowfat_fs* fs_ptr, double test_period) {
         auto r = check_lowfat_fs_single_file(fs_ptr, filenames[i], sizes[i], crcs[i]);
         assert(r.is_ok());
         int32_t fd = lowfat_fs_find_file(fs_ptr, filenames[i].c_str());
-        lowfat_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
+        lowfat_fs_fileinfo_t finfo = lowfat_fs_file_stat(fs_ptr, fd);
         uint32_t fsize = finfo.props->size;
         uint32_t freed_clusters = lowfat_fs_remove_file(fs_ptr, fd);
         assert(freed_clusters == (fsize / lowfat_fs_cluster_size(fs_ptr) + (fsize % lowfat_fs_cluster_size(fs_ptr) > 0)));
@@ -365,7 +365,7 @@ void test_crc32() {
         lowfat_fs_write_file(fs_ptr, (uint8_t*)test_abc, 3, 1, abc_fd);
         lowfat_fs_write_file(fs_ptr, (uint8_t*)test_d, 1, 1, abc_fd);
         lowfat_fs_close_file(fs_ptr, abc_fd);
-        const lowfat_fileinfo_t fst = lowfat_fs_file_stat(fs_ptr, abc_fd);
+        const lowfat_fs_fileinfo_t fst = lowfat_fs_file_stat(fs_ptr, abc_fd);
         printf("File remainder lookuped: %#010x\n", fst.props->crc32);
     }
     lowfat_fs_destroy_instance(fs_ptr);
@@ -432,7 +432,7 @@ void test_simple_rw() {
     }
     {
         int32_t text_fd = lowfat_fs_open_file(fs_ptr, "saved_text.txt", 'r');
-        lowfat_fileinfo_t file_info = lowfat_fs_file_stat(fs_ptr, text_fd);
+        lowfat_fs_fileinfo_t file_info = lowfat_fs_file_stat(fs_ptr, text_fd);
         char* text = new char[file_info.props->size];
         lowfat_fs_read_file(fs_ptr, (uint8_t*)text, 1, file_info.props->size, text_fd);
         lowfat_fs_close_file(fs_ptr, text_fd);
