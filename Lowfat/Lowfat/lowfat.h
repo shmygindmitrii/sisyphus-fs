@@ -24,12 +24,12 @@ typedef struct {
     uint8_t locked;
 } lowfat_fileprops_t;
 
-#define CREATE_LOWFAT_FILEPROPS(props) lowfat_fileprops_t props = { 0, 0, CRC32_CCIT_DEFAULT_VALUE, LF_NONE, LF_NONE, LF_NONE, 0, 0 };
-#define RESET_LOWFAT_FILEPROPS(props) { props.mtime = 0; props.size = 0; \
+#define CREATE_LOWFAT_FS_FILEPROPS(props) lowfat_fileprops_t props = { 0, 0, CRC32_CCIT_DEFAULT_VALUE, LOWFAT_FS_NONE, LOWFAT_FS_NONE, LOWFAT_FS_NONE, 0, 0 };
+#define RESET_LOWFAT_FS_FILEPROPS(props) { props.mtime = 0; props.size = 0; \
                                  props.crc32 = CRC32_CCIT_DEFAULT_VALUE; \
-                                 props.first_cluster = LF_NONE; \
-                                 props.last_cluster = LF_NONE; \
-                                 props.current_cluster = LF_NONE; \
+                                 props.first_cluster = LOWFAT_FS_NONE; \
+                                 props.last_cluster = LOWFAT_FS_NONE; \
+                                 props.current_cluster = LOWFAT_FS_NONE; \
                                  props.current_byte = 0; \
                                  props.locked = 0; }
 
@@ -40,7 +40,7 @@ typedef struct {
 } lowfat_fileinfo_t;
 
 // only create is needed
-#define CREATE_LOWFAT_FILEINFO(finfo, name_ptr, props_ptr) lowfat_fileinfo_t finfo; finfo.name = (char*)(name_ptr); finfo.props = (lowfat_fileprops_t*)(props_ptr);
+#define CREATE_LOWFAT_FS_FILEINFO(finfo, name_ptr, props_ptr) lowfat_fileinfo_t finfo; finfo.name = (char*)(name_ptr); finfo.props = (lowfat_fileprops_t*)(props_ptr);
 
 enum Lowfat_EFsInitAction {
     Reset,
@@ -57,9 +57,9 @@ typedef struct {
     uint32_t* _used_memory;
     uint32_t* _used_cluster_count;
     uint32_t* _file_count; // 0
-    int32_t* _filename_table_busy_tail; // LF_NONE
+    int32_t* _filename_table_busy_tail; // LOWFAT_FS_NONE
     int32_t* _filename_table_free_head; // 0
-    int32_t* _data_table_busy_tail; // LF_NONE
+    int32_t* _data_table_busy_tail; // LOWFAT_FS_NONE
     int32_t* _data_table_free_head; // 0
     uint16_t* _cluster_flags; // 0
     // arrays of cluster_count elements
@@ -77,9 +77,6 @@ typedef struct {
     uint32_t _clusters_touched;
 } lowfat_fs;
 #pragma pack(pop)
-
-extern const uint64_t LOWFAT_FS_DUMP_BEGIN_MARKER;
-extern const uint64_t LOWFAT_FS_DUMP_END_MARKER;
 
 // fs instance creation/destruction
 lowfat_fs* lowfat_fs_create_instance(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* mem);

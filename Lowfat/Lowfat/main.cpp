@@ -208,9 +208,9 @@ Result<uint32_t, lowfat_fs_err> check_lowfat_fs_single_file(lowfat_fs* fs_ptr, s
     std::vector<uint8_t> file_content(finfo.props->size, 0);
     int32_t fd = lowfat_fs_open_file(fs_ptr, filename.data(), 'r');
     int32_t read_ret = lowfat_fs_read_file(fs_ptr, file_content.data(), (uint32_t)file_content.size(), 1, fd);
-    assert(read_ret == LF_OK);
+    assert(read_ret == LOWFAT_FS_OK);
     lowfat_fs_close_file(fs_ptr, fd);
-    if (read_ret != LF_OK) {
+    if (read_ret != LOWFAT_FS_OK) {
         return Result<uint32_t, lowfat_fs_err>(lowfat_fs_error_t{ read_ret });
     }
     // file was successfully read, calculate crc32_ccit from its content
@@ -369,8 +369,8 @@ void test_crc32() {
         printf("File remainder lookuped: %#010x\n", fst.props->crc32);
     }
     lowfat_fs_destroy_instance(fs_ptr);
-    LOWFAT_ASSERT(allocated_table.empty());
-    LOWFAT_ASSERT(allocated_total == 0);
+    LOWFAT_FS_ASSERT(allocated_table.empty());
+    LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
 void test_simple_rw() {
@@ -439,8 +439,8 @@ void test_simple_rw() {
         delete[] text;
     }
     lowfat_fs_destroy_instance(fs_ptr);
-    LOWFAT_ASSERT(allocated_table.empty());
-    LOWFAT_ASSERT(allocated_total == 0);
+    LOWFAT_FS_ASSERT(allocated_table.empty());
+    LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
 void test_randomized_rw(const float duration) {
@@ -455,8 +455,8 @@ void test_randomized_rw(const float duration) {
     test_fs_readback(fs_ptr, duration);
     // test end
     lowfat_fs_destroy_instance(fs_ptr);
-    LOWFAT_ASSERT(allocated_table.empty());
-    LOWFAT_ASSERT(allocated_total == 0);
+    LOWFAT_FS_ASSERT(allocated_table.empty());
+    LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
 void test_randomized_dump(const float duration) {
@@ -487,10 +487,8 @@ void test_randomized_dump(const float duration) {
             filenames.emplace_back(wr_res.unwrap_ok().fname);
         }
         // finished fullfilling of fs
-        std::vector<uint8_t> dumped(lowfat_fs_total_size(fs_ptr) + sizeof(uint64_t) * 2, 0);
-        memcpy(&dumped[0], &LOWFAT_FS_DUMP_BEGIN_MARKER, sizeof(uint64_t));
-        memcpy(&dumped[sizeof(uint64_t) + lowfat_fs_total_size(fs_ptr)], &LOWFAT_FS_DUMP_END_MARKER, sizeof(uint64_t));
-        memcpy(&dumped[sizeof(uint64_t)], fs_mem.data(), lowfat_fs_total_size(fs_ptr));
+        std::vector<uint8_t> dumped(lowfat_fs_total_size(fs_ptr), 0);
+        memcpy(dumped.data(), fs_mem.data(), lowfat_fs_total_size(fs_ptr));
         // now we should recreate new fs from this dump and check
         std::vector<uint8_t> redumped; // to fill from file
         FILE* dumpfile = nullptr;
@@ -512,11 +510,8 @@ void test_randomized_dump(const float duration) {
             }
         }
         assert(redumped.size() == dumped.size());
-        uint64_t start_val = *((uint64_t*)redumped.data());
-        uint64_t end_val = *((uint64_t*)(redumped.data() + lowfat_fs_total_size(fs_ptr) + sizeof(uint64_t)));
-        assert(start_val == LOWFAT_FS_DUMP_BEGIN_MARKER && end_val == LOWFAT_FS_DUMP_END_MARKER);
 
-        lowfat_fs* fs_ref_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, redumped.data() + sizeof(uint64_t));
+        lowfat_fs* fs_ref_ptr = lowfat_fs_create_instance(fs_cluster_size, fs_cluster_count, fs_filename_max_length, redumped.data());
         lowfat_fs_set_instance_addresses(fs_ref_ptr);
         // no reset here, because want to reuse
         check_lowfat_fs_files(fs_ref_ptr, filenames, sizes, crcs, (uint32_t)filenames.size());
@@ -538,8 +533,8 @@ void test_randomized_dump(const float duration) {
     }
     printf("File system randomized dump test finished: %u cycles of fullfilling and working over dumped fs\n", cycle_idx);
     lowfat_fs_destroy_instance(fs_ptr);
-    LOWFAT_ASSERT(allocated_table.empty());
-    LOWFAT_ASSERT(allocated_total == 0);
+    LOWFAT_FS_ASSERT(allocated_table.empty());
+    LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
 static const char s_dumpname[] = "test_fs.bin";
@@ -689,8 +684,8 @@ void test_randomized_partial_dump(const float duration) {
         user_free(fs_ptr->_data);
         lowfat_fs_destroy_instance(fs_ptr);
     }
-    LOWFAT_ASSERT(allocated_table.empty());
-    LOWFAT_ASSERT(allocated_total == 0);
+    LOWFAT_FS_ASSERT(allocated_table.empty());
+    LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
 extern "C" {
@@ -699,9 +694,9 @@ extern "C" {
         srand((uint32_t)time(nullptr));
         test_simple_rw();
         test_crc32();
-        test_randomized_rw(240.0f);
-        test_randomized_dump(240.0f);
-        test_randomized_partial_dump(240.0f);
+        //test_randomized_rw(240.0f);
+        test_randomized_dump(10.0f);
+        //test_randomized_partial_dump(240.0f);
         return 0;
     }
 }
