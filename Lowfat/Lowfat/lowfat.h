@@ -24,14 +24,7 @@ typedef struct {
     uint8_t locked;
 } lowfat_fileprops_t;
 
-#define CREATE_LOWFAT_FS_FILEPROPS(props) lowfat_fileprops_t props = { 0, 0, CRC32_CCIT_DEFAULT_VALUE, LOWFAT_FS_NONE, LOWFAT_FS_NONE, LOWFAT_FS_NONE, 0, 0 };
-#define RESET_LOWFAT_FS_FILEPROPS(props) { props.mtime = 0; props.size = 0; \
-                                 props.crc32 = CRC32_CCIT_DEFAULT_VALUE; \
-                                 props.first_cluster = LOWFAT_FS_NONE; \
-                                 props.last_cluster = LOWFAT_FS_NONE; \
-                                 props.current_cluster = LOWFAT_FS_NONE; \
-                                 props.current_byte = 0; \
-                                 props.locked = 0; }
+void lowfat_fs_reset_fileprops(lowfat_fileprops_t* props);
 
 // always refers to a place inside data, never allocates/deallocates anything, just assign and use
 typedef struct {
@@ -39,8 +32,8 @@ typedef struct {
     lowfat_fileprops_t* props;
 } lowfat_fileinfo_t;
 
-// only create is needed
-#define CREATE_LOWFAT_FS_FILEINFO(finfo, name_ptr, props_ptr) lowfat_fileinfo_t finfo; finfo.name = (char*)(name_ptr); finfo.props = (lowfat_fileprops_t*)(props_ptr);
+// only create is needed, it is purely assignment of correct addresses into a single variable
+lowfat_fileinfo_t lowfat_fs_create_fileinfo(void* name_ptr, void* props_ptr);
 
 enum Lowfat_EFsInitAction {
     Reset,
