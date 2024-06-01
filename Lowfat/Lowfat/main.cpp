@@ -645,9 +645,6 @@ void test_randomized_partial_dump(const float duration) {
             cur_empty_file_idx -= files_to_remove;
         }
         s_fs_start = (void*)fs_ptr->_data;
-        //if (check_idx == 2) {
-            //__debugbreak();
-        //}
         lowfat_fs_walk_over_changed_data(fs_ptr, rewriter);
         if (rewritten_once) {
             user_free(fs_ptr->_data);
