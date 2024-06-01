@@ -694,9 +694,9 @@ extern "C" {
         srand((uint32_t)time(nullptr));
         test_simple_rw();
         test_crc32();
-        //test_randomized_rw(240.0f);
-        test_randomized_dump(10.0f);
-        //test_randomized_partial_dump(240.0f);
+        test_randomized_rw(240.0f);
+        test_randomized_dump(240.0f);
+        test_randomized_partial_dump(240.0f);
         return 0;
     }
 }
