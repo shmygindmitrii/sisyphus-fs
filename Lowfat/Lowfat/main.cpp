@@ -13,8 +13,11 @@
 #include <unordered_map>
 #include <type_traits>
 #include <variant>
+#include <random>
+#include <atomic>
 
 #include "crc32_ccit.h"
+#include "lowfat.h"
 
 static std::unordered_map<intptr_t, size_t> allocated_table = {};
 static size_t allocated_total = 0;
@@ -34,8 +37,6 @@ extern "C" {
         free(ptr);
     }
 }
-
-#include "lowfat.h"
 
 enum class EResultType {
     Ok,
@@ -97,9 +98,36 @@ struct Result {
     }
 };
 
+class RandomUint32Generator {
+public:
+    RandomUint32Generator() {
+        if (!_inited.load(std::memory_order_relaxed)) {
+            initialize();
+            _inited.store(true, std::memory_order_relaxed);
+        }
+    }
+    uint32_t operator()() const {
+        return INT_MAX + 1U + _dis(_gen);
+    }
+private:
+    static std::mt19937 _gen;
+    static std::uniform_int_distribution<> _dis;
+    static std::atomic_bool _inited;
+    static void initialize() {
+        std::random_device rd;
+        _gen = std::mt19937(rd());
+        _dis = std::uniform_int_distribution<>(INT_MIN, INT_MAX);
+    }
+};
+
+std::atomic_bool RandomUint32Generator::_inited = false;
+std::mt19937 RandomUint32Generator::_gen;
+std::uniform_int_distribution<> RandomUint32Generator::_dis;
+
 uint32_t fill_random_byte_buffer_and_calc_crc32(std::vector<uint8_t>& mem) {
+    RandomUint32Generator rand_gen;
     for (uint32_t i = 0; i < (uint32_t)mem.size(); i++) {
-        mem[i] = (uint8_t)(rand() % 256);
+        mem[i] = (uint8_t)(rand_gen() % 256);
     }
     return crc32_ccit_update(mem.data(), (uint32_t)mem.size(), CRC32_CCIT_DEFAULT_VALUE);
 }
@@ -121,7 +149,8 @@ struct MemAmount_t {
     }
 };
 
-static enum class out_of_space_t {} out_of_space = {};
+enum class out_of_space_t {};
+static const out_of_space_t out_of_space = {};
 
 struct write_info_t {
     uint32_t filesize = 0;
@@ -131,11 +160,12 @@ struct write_info_t {
 
 Result<write_info_t, out_of_space_t> write_to_lowfat_fs_instance_random_file(lowfat_fs* fs_ptr) {
     static size_t s_call_idx = 0;
+    RandomUint32Generator rand_gen;
     size_t available = lowfat_fs_free_available_mem_size(fs_ptr); // not tight, free clusters * cluster_size
     if (available) {
         // have a place to write
         write_info_t wrinfo = {};
-        wrinfo.filesize = (uint32_t)((rand() % lowfat_fs_total_size(fs_ptr)) % (available - lowfat_fs_cluster_size(fs_ptr) / 4) + lowfat_fs_cluster_size(fs_ptr) / 4);
+        wrinfo.filesize = (uint32_t)((rand_gen() % lowfat_fs_total_size(fs_ptr)) % (available - lowfat_fs_cluster_size(fs_ptr) / 4) + lowfat_fs_cluster_size(fs_ptr) / 4);
         std::vector<uint8_t> mem(wrinfo.filesize);
         wrinfo.crc = fill_random_byte_buffer_and_calc_crc32(mem);
         char tmp[64];
@@ -275,6 +305,7 @@ void test_fs_readback(lowfat_fs* fs_ptr, double test_period) {
     uint32_t cur_empty_file_idx = 0;
     uint32_t cycle_idx = 0;
     MemAmount_t rewritten_memory{};
+    RandomUint32Generator rand_gen;
 
     while (elapsed.count() < test_period) {
         if (auto wr_res = write_to_lowfat_fs_instance_random_file(fs_ptr)) {
@@ -294,13 +325,13 @@ void test_fs_readback(lowfat_fs* fs_ptr, double test_period) {
         else {
             // need to free place
             uint32_t files_written = lowfat_fs_file_count(fs_ptr);
-            uint32_t files_to_remove = (rand() % (files_written - 1)) + 1;
+            uint32_t files_to_remove = (rand_gen() % (files_written - 1)) + 1;
 #if _DEBUG
             printf("Space finished, free procedure for %u files of %u \n", files_to_remove, files_written);
 #endif
             for (uint32_t i = 0; i < files_to_remove; i++) {
                 // need a vector of filenames
-                uint32_t cur_file_idx = rand() % files_written;
+                uint32_t cur_file_idx = rand_gen() % files_written;
                 auto pre_remove_test_res = check_lowfat_fs_single_file(fs_ptr, filenames[cur_file_idx], sizes[cur_file_idx], crcs[cur_file_idx]);
                 assert(pre_remove_test_res.is_ok());
                 int32_t fd = lowfat_fs_find_file(fs_ptr, filenames[cur_file_idx].c_str());
@@ -603,6 +634,7 @@ void test_randomized_partial_dump(const float duration) {
     std::vector<uint32_t> sizes;
     std::vector <std::string> filenames;
     uint32_t check_idx = 0;
+    RandomUint32Generator rand_gen;
     while (elapsed.count() < duration) {
         if (Result<write_info_t, out_of_space_t> res = write_to_lowfat_fs_instance_random_file(fs_ptr)) {
             // dumped new
@@ -623,14 +655,15 @@ void test_randomized_partial_dump(const float duration) {
             // remove random number of files
             // need to free place
             uint32_t files_written = lowfat_fs_file_count(fs_ptr);
-            uint32_t files_to_remove = (rand() % (files_written - 1)) + 1;
+            uint32_t files_to_remove = (rand_gen() % (files_written - 1)) + 1;
 #if _DEBUG
             printf("Space finished, free procedure for %u files of %u \n", files_to_remove, files_written);
 #endif
             for (uint32_t i = 0; i < files_to_remove; i++) {
                 // need a vector of filenames
-                uint32_t cur_file_idx = rand() % files_written;
+                uint32_t cur_file_idx = rand_gen() % files_written;
                 auto remove_res = remove_lowfat_fs_single_file(fs_ptr, filenames[cur_file_idx], sizes[cur_file_idx], crcs[cur_file_idx]);
+                assert(remove_res.is_ok());
                 if (cur_file_idx != files_written - 1) {
                     assert(filenames[cur_file_idx] != filenames[cur_empty_file_idx - 1]);
                     filenames[cur_file_idx] = filenames[files_written - 1];
@@ -688,7 +721,6 @@ void test_randomized_partial_dump(const float duration) {
 extern "C" {
     int main()
     {
-        srand((uint32_t)time(nullptr));
         test_simple_rw();
         test_crc32();
         test_randomized_rw(240.0f);
