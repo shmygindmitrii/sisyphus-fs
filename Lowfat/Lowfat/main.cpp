@@ -385,16 +385,16 @@ void test_crc32() {
     //
     const char test_abc[] = "ABC";
     const char test_d[] = "D";
-    uint32_t crc_test_3 = crc32_ccit_update((uint8_t*)test_abc, 3, CRC32_CCIT_DEFAULT_VALUE); // start from filled to do not shift initial crc zeros
+    uint32_t crc_test_3 = crc32_ccit_update(reinterpret_cast<const uint8_t*>(test_abc), 3, CRC32_CCIT_DEFAULT_VALUE); // start from filled to do not shift initial crc zeros
     // https://commandlinefanatic.com/cgi-bin/showarticle.cgi?article=art008
     assert(crc_test_3 == 0xa3830348);
     printf("ABC remainder lookuped: %#010x\n", crc_test_3);
-    crc_test_3 = crc32_ccit_update((uint8_t*)test_d, 1, crc_test_3);
+    crc_test_3 = crc32_ccit_update(reinterpret_cast<const uint8_t*>(test_d), 1, crc_test_3);
     printf("ABCD remainder lookuped: %#010x\n", crc_test_3);
     {
         int32_t abc_fd = lowfat_fs_open_file(fs_ptr, "saved_text.txt", 'w');
-        lowfat_fs_write_file(fs_ptr, (uint8_t*)test_abc, 3, 1, abc_fd);
-        lowfat_fs_write_file(fs_ptr, (uint8_t*)test_d, 1, 1, abc_fd);
+        lowfat_fs_write_file(fs_ptr, reinterpret_cast<const uint8_t*>(test_abc), 3, 1, abc_fd);
+        lowfat_fs_write_file(fs_ptr, reinterpret_cast<const uint8_t*>(test_d), 1, 1, abc_fd);
         lowfat_fs_close_file(fs_ptr, abc_fd);
         const lowfat_fs_fileinfo_t fst = lowfat_fs_file_stat(fs_ptr, abc_fd);
         printf("File remainder lookuped: %#010x\n", fst.props->crc32);
@@ -452,22 +452,23 @@ void test_simple_rw() {
         int32_t close_res = lowfat_fs_close_file(fs_ptr, test_fd);
     }
     {
-        char text[1536] = { '\0' };
+        std::string text;
+        text.reserve(1536);
+        text.resize(1536);
         int32_t switcher = 1536 / ('z' - 'a' + 1);
         for (int i = 0; i < 1536; i++) {
-            text[i] = 'a' + i / switcher;
+            text[i] = 'a' + static_cast<char>(i / switcher);
         }
         int32_t text_fd = lowfat_fs_open_file(fs_ptr, "saved_text.txt", 'w');
-        lowfat_fs_write_file(fs_ptr, (uint8_t*)(text), 1, sizeof(text), text_fd);
+        lowfat_fs_write_file(fs_ptr, reinterpret_cast<const uint8_t*>(text.c_str()), 1, sizeof(text), text_fd);
         lowfat_fs_close_file(fs_ptr, text_fd);
     }
     {
         int32_t text_fd = lowfat_fs_open_file(fs_ptr, "saved_text.txt", 'r');
         lowfat_fs_fileinfo_t file_info = lowfat_fs_file_stat(fs_ptr, text_fd);
-        char* text = new char[file_info.props->size];
-        lowfat_fs_read_file(fs_ptr, (uint8_t*)text, 1, file_info.props->size, text_fd);
+        auto text = std::make_unique<char[]>(file_info.props->size);
+        lowfat_fs_read_file(fs_ptr, (uint8_t*)text.get(), 1, file_info.props->size, text_fd);
         lowfat_fs_close_file(fs_ptr, text_fd);
-        delete[] text;
     }
     lowfat_fs_destroy_instance(fs_ptr);
     LOWFAT_FS_ASSERT(allocated_table.empty());
