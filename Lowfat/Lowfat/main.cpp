@@ -5,7 +5,7 @@
 #include <iostream>
 #include <inttypes.h>
 #include <memory>
-#include <cstring>
+#include <string>
 #include <cassert>
 #include <bitset>
 #include <ctime>
@@ -45,16 +45,16 @@ enum class EResultType {
 
 template <typename T, EResultType R>
 struct ResultValue {
-    T value;
+    T value = {};
     static constexpr EResultType type = R;
-    ResultValue() {}
+    ResultValue() = default;
     explicit ResultValue(const T& arg) : value(arg) {}
     explicit ResultValue(T&& arg) noexcept : value(std::move(arg)) {}
 };
 
 template<typename O, typename E>
 struct Result {
-    static_assert(!std::is_convertible<O, E>::value);
+    static_assert(!std::is_convertible_v<O, E>);
 
     using OkType = typename ResultValue<O, EResultType::Ok>;
     using ErrType = typename ResultValue<E, EResultType::Error>;
@@ -72,8 +72,8 @@ struct Result {
     Result(const Result&) = delete;
     Result& operator=(const Result&) = delete;
 
-    Result(Result&&) = default;
-    Result& operator=(Result&&) = default;
+    Result(Result&&) noexcept = default;
+    Result& operator=(Result&&) noexcept = default;
 
     bool is_ok() const {
         return type == EResultType::Ok;
@@ -168,9 +168,7 @@ Result<write_info_t, out_of_space_t> write_to_lowfat_fs_instance_random_file(low
         wrinfo.filesize = (uint32_t)((rand_gen() % lowfat_fs_total_size(fs_ptr)) % (available - lowfat_fs_cluster_size(fs_ptr) / 4) + lowfat_fs_cluster_size(fs_ptr) / 4);
         std::vector<uint8_t> mem(wrinfo.filesize);
         wrinfo.crc = fill_random_byte_buffer_and_calc_crc32(mem);
-        char tmp[64];
-        snprintf(tmp, 64, "test_file_%" PRIu64 ".bin", s_call_idx++);
-        wrinfo.fname = tmp;
+        wrinfo.fname = "test_file_" + std::to_string(s_call_idx++) + ".bin";
 #if _DEBUG
         printf("try to save \"%s\" of size %u\n", wrinfo.fname.c_str(), wrinfo.filesize);
 #endif
@@ -416,41 +414,43 @@ void test_simple_rw() {
 
     const int max_user_file_count = lowfat_fs_cluster_count(fs_ptr) - lowfat_fs_system_used_clusters(fs_ptr);
     for (int i = 0; i < max_user_file_count; i++) {
-        char filename[fs_filename_max_length] = { 0 };
-        snprintf(filename, fs_filename_max_length, "test%d.txt", i);
-        int32_t test = lowfat_fs_open_file(fs_ptr, filename, 'w');
+        std::string filename = "test" + std::to_string(i) + ".txt";
+        int32_t test = lowfat_fs_open_file(fs_ptr, filename.c_str(), 'w');
         assert(test >= 0);
         int32_t close_res = lowfat_fs_close_file(fs_ptr, test);
+        assert(close_res == LOWFAT_FS_OK);
     }
     for (int i = 0; i < max_user_file_count; i++) {
-        char filename[fs_filename_max_length] = { 0 };
-        snprintf(filename, fs_filename_max_length, "test%d.txt", i);
-        int32_t remove_res = lowfat_fs_remove_file_str(fs_ptr, filename);
+        std::string filename = "test" + std::to_string(i) + ".txt";
+        int32_t remove_res = lowfat_fs_remove_file_str(fs_ptr, filename.c_str());
+        assert(remove_res > 0);
     }
     for (int i = 0; i < max_user_file_count; i++) {
-        char filename[fs_filename_max_length] = { 0 };
-        snprintf(filename, fs_filename_max_length, "test%d.txt", i);
-        int32_t test = lowfat_fs_open_file(fs_ptr, filename, 'w');
+        std::string filename = "test" + std::to_string(i) + ".txt";
+        int32_t test = lowfat_fs_open_file(fs_ptr, filename.c_str(), 'w');
         int32_t close_res = lowfat_fs_close_file(fs_ptr, test);
+        assert(close_res == LOWFAT_FS_OK);
     }
     for (int i = 5; i < max_user_file_count + 5; i++) {
-        char filename[fs_filename_max_length] = { 0 };
-        snprintf(filename, fs_filename_max_length, "test%d.txt", i % max_user_file_count);
-        int32_t remove_res = lowfat_fs_remove_file_str(fs_ptr, filename);
+        std::string filename = "test" + std::to_string(i % max_user_file_count) + ".txt";
+        int32_t remove_res = lowfat_fs_remove_file_str(fs_ptr, filename.c_str());
+        assert(remove_res > 0);
     }
     {
         int32_t test_fd = lowfat_fs_open_file(fs_ptr, "three.txt", 'w');
-        uint8_t test_buf[fs_cluster_size * 3] = { 0 };
-        memset(test_buf, 1, fs_cluster_size * 3);
-        lowfat_fs_write_file(fs_ptr, test_buf, 1, fs_cluster_size * 3, test_fd);
+        std::vector<uint8_t>test_buf(fs_cluster_size * 3);
+        memset(test_buf.data(), 1, fs_cluster_size * 3);
+        lowfat_fs_write_file(fs_ptr, test_buf.data(), 1, fs_cluster_size * 3, test_fd);
         int32_t close_res = lowfat_fs_close_file(fs_ptr, test_fd);
+        assert(close_res == LOWFAT_FS_OK);
     }
     {
         int32_t test_fd = lowfat_fs_open_file(fs_ptr, "three_and_half.txt", 'w');
-        uint8_t test_buf[fs_cluster_size / 2] = { 0 };
-        memset(test_buf, 2, fs_cluster_size / 2);
-        lowfat_fs_write_file(fs_ptr, test_buf, 1, fs_cluster_size / 2, test_fd);
+        std::vector<uint8_t>test_buf(fs_cluster_size / 2);
+        memset(test_buf.data(), 2, fs_cluster_size / 2);
+        lowfat_fs_write_file(fs_ptr, test_buf.data(), 1, fs_cluster_size / 2, test_fd);
         int32_t close_res = lowfat_fs_close_file(fs_ptr, test_fd);
+        assert(close_res == LOWFAT_FS_OK);
     }
     {
         std::string text;
@@ -588,9 +588,11 @@ static size_t rewriter(void* data, size_t size) {
     assert(offset + size <= s_fs_size);
     memcpy(mem.data() + offset, data, size);
     fopen_s(&f, s_dumpname, "wb");
-    size_t wr = fwrite(mem.data(), s_fs_size, 1, f);
-    assert(wr == 1);
-    fclose(f);
+    if (f) {
+        size_t wr = fwrite(mem.data(), s_fs_size, 1, f);
+        assert(wr == 1);
+        fclose(f);
+    }
     return size;
 }
 
