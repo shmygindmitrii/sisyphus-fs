@@ -711,7 +711,7 @@ void test_randomized_partial_dump(const float duration) {
     int64_t free_memory_calculated = lowfat_fs_total_size(fs_ptr) - lowfat_fs_system_used_size(fs_ptr);
     int64_t free_memory = lowfat_fs_free_mem_size(fs_ptr);
     assert(free_memory == free_memory_calculated);
-    printf("File system randomized RW test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, lowfat_fs_total_size(fs_ptr)); 
+    printf("File system randomized partial dump test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, lowfat_fs_total_size(fs_ptr)); 
     if (fs_ptr) {
         user_free(fs_ptr->_data);
         lowfat_fs_destroy_instance(fs_ptr);
