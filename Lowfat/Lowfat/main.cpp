@@ -284,7 +284,8 @@ Result<uint32_t, lowfat_fs_err> remove_lowfat_fs_single_file(lowfat_fs* fs_ptr, 
         uint32_t freed_clusters = lowfat_fs_remove_file(fs_ptr, fd);
         // check removed cluster count
         uint32_t cluster_size = lowfat_fs_cluster_size(fs_ptr);
-        if (size_t clusters_should_be_freed = size / cluster_size + size % cluster_size; clusters_should_be_freed != (size_t)freed_clusters) {
+        if (size_t clusters_should_be_freed = size / cluster_size + static_cast<size_t>(size % cluster_size > 0); clusters_should_be_freed != (size_t)freed_clusters) {
+            assert(clusters_should_be_freed == (size_t)freed_clusters);
             return Result<uint32_t, lowfat_fs_err>(lowfat_fs_wrong_cluster_count_t{ freed_clusters });
         }
         // file was correct, removed correct cluster count, file deleted successfully
