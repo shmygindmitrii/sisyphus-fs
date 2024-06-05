@@ -101,26 +101,24 @@ struct Result {
 class RandomUint32Generator {
 public:
     RandomUint32Generator() {
-        if (!_inited.load(std::memory_order_relaxed)) {
-            initialize();
-            _inited.store(true, std::memory_order_relaxed);
-        }
+        static std::once_flag _init;
+        std::call_once(_init, []() {
+            RandomUint32Generator::initialize();
+        });
     }
     uint32_t operator()() const {
         return INT_MAX + 1U + _dis(_gen);
     }
-private:
-    static std::mt19937 _gen;
-    static std::uniform_int_distribution<> _dis;
-    static std::atomic_bool _inited;
     static void initialize() {
         std::random_device rd;
         _gen = std::mt19937(rd());
         _dis = std::uniform_int_distribution<>(INT_MIN, INT_MAX);
     }
+private:
+    static std::mt19937 _gen;
+    static std::uniform_int_distribution<> _dis;
 };
 
-std::atomic_bool RandomUint32Generator::_inited = false;
 std::mt19937 RandomUint32Generator::_gen;
 std::uniform_int_distribution<> RandomUint32Generator::_dis;
 
