@@ -504,7 +504,6 @@ void test_randomized_dump(const float duration) {
     std::chrono::duration<double> elapsed = end - start;
     uint32_t cycle_idx = 0;
     while (elapsed.count() < duration) {
-        uint32_t file_idx = 0;
         std::vector<uint32_t> crcs;
         std::vector<uint32_t> sizes;
         std::vector <std::string> filenames;
