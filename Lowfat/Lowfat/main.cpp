@@ -250,7 +250,7 @@ Result<uint32_t, lowfat_fs_err> check_lowfat_fs_single_file(lowfat_fs* fs_ptr, s
 }
 
 Result<uint32_t, lowfat_fs_err> check_lowfat_fs_files(lowfat_fs* fs_ptr, std::vector<std::string>& filenames, std::vector<uint32_t>& sizes, std::vector<uint32_t>& crcs, uint32_t count) {
-    if (*fs_ptr->_file_count != count) {
+    if (fs_ptr->_header->_file_count != count) {
         return Result<uint32_t, lowfat_fs_err>(lowfat_fs_wrong_file_count);
     }
     uint32_t i = 0;

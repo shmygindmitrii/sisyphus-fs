@@ -37,31 +37,39 @@ typedef struct {
 lowfat_fs_fileinfo_t lowfat_fs_create_fileinfo(void* name_ptr, void* props_ptr);
 
 typedef struct {
-    // this is the only real data
-    uint8_t* _data; // of total_size
-    //
-    uint32_t* _cluster_size;
-    uint32_t* _cluster_count;
-    uint32_t* _filename_length;
-    uint32_t* _used_memory;
-    uint32_t* _used_cluster_count;
-    uint32_t* _file_count; // 0
-    int32_t* _filename_table_busy_tail; // LOWFAT_FS_NONE
-    int32_t* _filename_table_free_head; // 0
-    int32_t* _data_table_busy_tail; // LOWFAT_FS_NONE
-    int32_t* _data_table_free_head; // 0
-    uint16_t* _cluster_flags; // 0
-    // arrays of cluster_count elements
-    uint8_t* _filenames;
-    uint8_t* _fileprops;
-    structures_int_pair_t* _filename_table;
-    structures_int_pair_t* _data_table;
-    // because this part do not change, no need to save it into _data
+    uint32_t _cluster_size;
+    uint32_t _cluster_count;
+    uint32_t _filename_length;
+    uint32_t _used_memory;
+    uint32_t _used_cluster_count;
+    uint32_t _file_count; // 0
+    int32_t  _filename_table_busy_tail; // LOWFAT_FS_NONE
+    int32_t  _filename_table_free_head; // 0
+    int32_t  _data_table_busy_tail; // LOWFAT_FS_NONE
+    int32_t  _data_table_free_head; // 0
+} lowfat_fs_header;
+
+typedef struct {
     uint32_t _total_size;
     uint32_t _system_used_size;
     uint32_t _system_used_clusters;
     uint32_t _last_system_cluster;
     uint32_t _clusters_touched;
+} lowfat_fs_info;
+
+typedef struct {
+    // this is the only real data
+    uint8_t* _data; // of total_size
+    // inside of _data
+    lowfat_fs_header* _header;
+    // arrays of cluster_count elements
+    uint16_t* _cluster_flags; // 0
+    uint8_t* _filenames;
+    uint8_t* _fileprops;
+    structures_int_pair_t* _filename_table;
+    structures_int_pair_t* _data_table;
+    // because this part do not change, no need to save it into _data
+    lowfat_fs_info _info;
 } lowfat_fs;
 #pragma pack(pop)
 
