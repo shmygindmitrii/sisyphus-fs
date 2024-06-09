@@ -3,14 +3,15 @@
 #include "lowfat_prelude.h"
 #include "lowfat_defines.h"
 #include "crc32_ccit.h"
+#include "structures.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void lowfat_fs_dl_acquire_next_free(int32_t * table_next, int32_t * table_prev, int32_t * last_busy, int32_t * first_free);
-void lowfat_fs_dl_free_busy_range(int32_t* table_next, int32_t* table_prev, int32_t first, int32_t last, int32_t* last_busy, int32_t* first_free);
-uint32_t lowfat_fs_dl_calculate_range_length(const int32_t* const table_next, int32_t first, int32_t last);
+void lowfat_fs_dl_acquire_next_free(structures_int_pair_t* table, int32_t* last_busy, int32_t* first_free);
+void lowfat_fs_dl_free_busy_range(structures_int_pair_t* table, int32_t first, int32_t last, int32_t* last_busy, int32_t* first_free);
+uint32_t lowfat_fs_dl_calculate_range_length(const structures_int_pair_t* const table, int32_t first, int32_t last);
 
 #pragma pack(push, 1)
 typedef struct {
@@ -53,10 +54,8 @@ typedef struct {
     // arrays of cluster_count elements
     uint8_t* _filenames;
     uint8_t* _fileprops;
-    int32_t* _filename_table_next;
-    int32_t* _filename_table_prev;
-    int32_t* _data_table_next;
-    int32_t* _data_table_prev;
+    structures_int_pair_t* _filename_table;
+    structures_int_pair_t* _data_table;
     // because this part do not change, no need to save it into _data
     uint32_t _total_size;
     uint32_t _system_used_size;

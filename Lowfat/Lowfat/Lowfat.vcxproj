@@ -133,12 +133,15 @@
     <ClCompile Include="crc32_ccit.c" />
     <ClCompile Include="lowfat.c" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="structures.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="crc32_ccit.h" />
     <ClInclude Include="lowfat.h" />
     <ClInclude Include="lowfat_defines.h" />
     <ClInclude Include="lowfat_prelude.h" />
+    <ClInclude Include="structures.h" />
+    <ClInclude Include="structures_prelude.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

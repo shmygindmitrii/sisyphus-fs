@@ -14,48 +14,49 @@ extern void user_free(void*);
 #endif
 
 // double linked-list functions
-
+#define PAIR_NEXT second
+#define PAIR_PREV first
 // tail addition
-void lowfat_fs_dl_acquire_next_free(int32_t* table_next, int32_t* table_prev, int32_t* last_busy, int32_t* first_free) {
+void lowfat_fs_dl_acquire_next_free(structures_int_pair_t* table, int32_t* last_busy, int32_t* first_free) {
     int32_t cur_free = *first_free;
-    LOWFAT_FS_ASSERT(table_prev[cur_free] == LOWFAT_FS_NONE);
-    *first_free = table_next[*first_free];
+    LOWFAT_FS_ASSERT(table[cur_free].PAIR_PREV == LOWFAT_FS_NONE);
+    *first_free = table[*first_free].PAIR_NEXT;
     if (*first_free != LOWFAT_FS_NONE) {
-        table_prev[*first_free] = LOWFAT_FS_NONE;
+        table[*first_free].PAIR_PREV = LOWFAT_FS_NONE;
     }
-    LOWFAT_FS_ASSERT(table_next[*last_busy] == LOWFAT_FS_NONE);
-    table_prev[cur_free] = *last_busy;
-    table_next[*last_busy] = cur_free;
-    table_next[cur_free] = LOWFAT_FS_NONE;
+    LOWFAT_FS_ASSERT(table[*last_busy].PAIR_NEXT == LOWFAT_FS_NONE);
+    table[cur_free].PAIR_PREV = *last_busy;
+    table[*last_busy].PAIR_NEXT = cur_free;
+    table[cur_free].PAIR_NEXT = LOWFAT_FS_NONE;
     *last_busy = cur_free;
 }
 
-void lowfat_fs_dl_free_busy_range(int32_t* table_next, int32_t* table_prev, int32_t first, int32_t last, int32_t* last_busy, int32_t* first_free) {
+void lowfat_fs_dl_free_busy_range(structures_int_pair_t* table, int32_t first, int32_t last, int32_t* last_busy, int32_t* first_free) {
     // merge busy list segments
-    int32_t prev = table_prev[first];
-    int32_t next = table_next[last];
-    table_next[prev] = next; // never LOWFAT_FS_NONE, because of system used nodes
+    int32_t prev = table[first].PAIR_PREV;
+    int32_t next = table[last].PAIR_NEXT;
+    table[prev].PAIR_NEXT = next; // never LOWFAT_FS_NONE, because of system used nodes
     if (next != LOWFAT_FS_NONE) {
-        table_prev[next] = prev;
+        table[next].PAIR_PREV = prev;
     }
     else {
         *last_busy = prev;
     }
     // detach from busy chain and attach to free one in the beginning
-    table_prev[first] = LOWFAT_FS_NONE;
-    table_next[last] = *first_free;
+    table[first].PAIR_PREV = LOWFAT_FS_NONE;
+    table[last].PAIR_NEXT = *first_free;
     if (*first_free != LOWFAT_FS_NONE) {
-        LOWFAT_FS_ASSERT(table_prev[*first_free] == LOWFAT_FS_NONE);
-        table_prev[*first_free] = last;
+        LOWFAT_FS_ASSERT(table[*first_free].PAIR_PREV == LOWFAT_FS_NONE);
+        table[*first_free].PAIR_PREV = last;
     }
     *first_free = first;
 }
 
-uint32_t lowfat_fs_dl_calculate_range_length(const int32_t* const table_next, int32_t first, int32_t last) {
+uint32_t lowfat_fs_dl_calculate_range_length(const structures_int_pair_t* const table, int32_t first, int32_t last) {
     LOWFAT_FS_ASSERT(first >= 0 && last >= 0);
     uint32_t node_count = 1;
     while (first != last) {
-        first = table_next[first];
+        first = table[first].PAIR_NEXT;
         node_count++;
     }
     return node_count;
@@ -117,11 +118,9 @@ void lowfat_fs_set_instance_addresses(lowfat_fs* fs_ptr) {
     const uint32_t fileinfo_size = fileinfo_stride * (*fs_ptr->_cluster_count);
     fs_ptr->_filenames = fs_ptr->_data + fileinfos_offset;
     fs_ptr->_fileprops = fs_ptr->_data + fileinfos_offset + (*fs_ptr->_filename_length);
-    fs_ptr->_filename_table_next = (int32_t*)(fs_ptr->_data + fileinfos_offset + fileinfo_size);
-    fs_ptr->_filename_table_prev = fs_ptr->_filename_table_next + (*fs_ptr->_cluster_count);
-    fs_ptr->_data_table_next = fs_ptr->_filename_table_prev + (*fs_ptr->_cluster_count);
-    fs_ptr->_data_table_prev = fs_ptr->_data_table_next + (*fs_ptr->_cluster_count);
-    fs_ptr->_cluster_flags = (uint16_t*)(fs_ptr->_data_table_prev + (*fs_ptr->_cluster_count));
+    fs_ptr->_filename_table = (structures_int_pair_t*)(fs_ptr->_data + fileinfos_offset + fileinfo_size);
+    fs_ptr->_data_table = fs_ptr->_filename_table + (*fs_ptr->_cluster_count);
+    fs_ptr->_cluster_flags = (uint16_t*)(fs_ptr->_data_table + (*fs_ptr->_cluster_count));
 }
 
 void lowfat_fs_reset_instance(lowfat_fs* fs_ptr) {
@@ -134,17 +133,17 @@ void lowfat_fs_reset_instance(lowfat_fs* fs_ptr) {
         memset(fs_ptr->_filenames + i * fileinfo_stride, 0, (*fs_ptr->_filename_length));
         lowfat_fs_fileprops_t* props_i = (lowfat_fs_fileprops_t*)(fs_ptr->_fileprops + i * fileinfo_stride);
         lowfat_fs_reset_fileprops(props_i);
-        fs_ptr->_filename_table_next[i] = i + 1;
-        fs_ptr->_filename_table_prev[i] = i - 1;
-        fs_ptr->_data_table_next[i] = i + 1;
-        fs_ptr->_data_table_prev[i] = i - 1;
+        fs_ptr->_filename_table[i].PAIR_NEXT = i + 1;
+        fs_ptr->_filename_table[i].PAIR_PREV = i - 1;
+        fs_ptr->_data_table[i].PAIR_NEXT = i + 1;
+        fs_ptr->_data_table[i].PAIR_PREV = i - 1;
         fs_ptr->_cluster_flags[i] = 0;
     }
-    fs_ptr->_filename_table_next[*fs_ptr->_cluster_count - 1] = LOWFAT_FS_NONE;
+    fs_ptr->_filename_table[*fs_ptr->_cluster_count - 1].PAIR_NEXT = LOWFAT_FS_NONE;
     *fs_ptr->_filename_table_busy_tail = fs_ptr->_last_system_cluster;
     *fs_ptr->_filename_table_free_head = fs_ptr->_last_system_cluster + 1;
-    fs_ptr->_filename_table_next[*fs_ptr->_filename_table_busy_tail] = LOWFAT_FS_NONE;
-    fs_ptr->_filename_table_prev[*fs_ptr->_filename_table_free_head] = LOWFAT_FS_NONE;
+    fs_ptr->_filename_table[*fs_ptr->_filename_table_busy_tail].PAIR_NEXT = LOWFAT_FS_NONE;
+    fs_ptr->_filename_table[*fs_ptr->_filename_table_free_head].PAIR_PREV = LOWFAT_FS_NONE;
 
     for (uint32_t i = 0; i < fs_ptr->_system_used_clusters; i++) {
         snprintf((char*)(fs_ptr->_filenames + i * fileinfo_stride), *fs_ptr->_filename_length, "SYSTEM%d", i);
@@ -152,11 +151,11 @@ void lowfat_fs_reset_instance(lowfat_fs* fs_ptr) {
         props_i->size = *fs_ptr->_cluster_size;
     }
 
-    fs_ptr->_data_table_next[(*fs_ptr->_cluster_count) - 1] = LOWFAT_FS_NONE;
+    fs_ptr->_data_table[(*fs_ptr->_cluster_count) - 1].PAIR_NEXT = LOWFAT_FS_NONE;
     *fs_ptr->_data_table_busy_tail = fs_ptr->_last_system_cluster;
     *fs_ptr->_data_table_free_head = fs_ptr->_last_system_cluster + 1;
-    fs_ptr->_data_table_next[*fs_ptr->_data_table_busy_tail] = LOWFAT_FS_NONE;
-    fs_ptr->_data_table_prev[*fs_ptr->_data_table_free_head] = LOWFAT_FS_NONE;
+    fs_ptr->_data_table[*fs_ptr->_data_table_busy_tail].PAIR_NEXT = LOWFAT_FS_NONE;
+    fs_ptr->_data_table[*fs_ptr->_data_table_free_head].PAIR_PREV = LOWFAT_FS_NONE;
 }
 
 void lowfat_fs_destroy_instance(lowfat_fs* fs_ptr) {
@@ -204,10 +203,10 @@ int32_t lowfat_fs_open_file(lowfat_fs* fs_ptr, const char* filename, char mode) 
         }
         LOWFAT_FS_ASSERT(fd == LOWFAT_FS_ERROR_FILE_NOT_FOUND);
         // LOWFAT_FS_FILE_ERROR_NOT_FOUND - create new
-        lowfat_fs_dl_acquire_next_free(fs_ptr->_filename_table_next, fs_ptr->_filename_table_prev, fs_ptr->_filename_table_busy_tail, fs_ptr->_filename_table_free_head);
+        lowfat_fs_dl_acquire_next_free(fs_ptr->_filename_table, fs_ptr->_filename_table_busy_tail, fs_ptr->_filename_table_free_head);
         fd = *fs_ptr->_filename_table_busy_tail;
         // put busy node to the head of list
-        lowfat_fs_dl_acquire_next_free(fs_ptr->_data_table_next, fs_ptr->_data_table_prev, fs_ptr->_data_table_busy_tail, fs_ptr->_data_table_free_head);
+        lowfat_fs_dl_acquire_next_free(fs_ptr->_data_table, fs_ptr->_data_table_busy_tail, fs_ptr->_data_table_free_head);
         (*fs_ptr->_used_cluster_count)++;
         // add to _fileinfos first free first_cluster
         lowfat_fs_fileinfo_t fi = lowfat_fs_create_fileinfo(fs_ptr->_filenames + fd * fileinfo_stride, fs_ptr->_fileprops + fd * fileinfo_stride);
@@ -245,7 +244,7 @@ int32_t lowfat_fs_read_file(lowfat_fs* fs_ptr, uint8_t* buf, uint32_t elem_size,
         while (read_size > 0) {
             uint32_t mem_can_read = (*fs_ptr->_cluster_size) - fi.props->current_byte;
             if (mem_can_read == 0) {
-                fi.props->current_cluster = fs_ptr->_data_table_next[fi.props->current_cluster];
+                fi.props->current_cluster = fs_ptr->_data_table[fi.props->current_cluster].PAIR_NEXT;
                 fi.props->current_byte = 0;
                 mem_can_read = (*fs_ptr->_cluster_size);
             }
@@ -281,7 +280,7 @@ int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, const uint8_t* const buf, uint32
                 if (*fs_ptr->_data_table_free_head == LOWFAT_FS_NONE) {
                     return LOWFAT_FS_ERROR_SPACE_ENDED;
                 }
-                lowfat_fs_dl_acquire_next_free(fs_ptr->_data_table_next, fs_ptr->_data_table_prev, fs_ptr->_data_table_busy_tail, fs_ptr->_data_table_free_head);
+                lowfat_fs_dl_acquire_next_free(fs_ptr->_data_table, fs_ptr->_data_table_busy_tail, fs_ptr->_data_table_free_head);
                 fi.props->last_cluster = *fs_ptr->_data_table_busy_tail;
                 fi.props->current_byte = 0;
                 mem_can_write = (*fs_ptr->_cluster_size);
@@ -347,11 +346,11 @@ uint32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int32_t fd) {
         lowfat_fs_fileinfo_t fi = lowfat_fs_create_fileinfo(fs_ptr->_filenames + fd * fileinfo_stride, fs_ptr->_fileprops + fd * fileinfo_stride);
         int32_t first_cluster = fi.props->first_cluster;
         int32_t last_cluster = fi.props->last_cluster;
-        uint32_t freed_clusters = lowfat_fs_dl_calculate_range_length(fs_ptr->_data_table_next, first_cluster, last_cluster);
+        uint32_t freed_clusters = lowfat_fs_dl_calculate_range_length(fs_ptr->_data_table, first_cluster, last_cluster);
         (*fs_ptr->_used_cluster_count) -= freed_clusters;
-        lowfat_fs_dl_free_busy_range(fs_ptr->_data_table_next, fs_ptr->_data_table_prev, first_cluster, last_cluster, fs_ptr->_data_table_busy_tail, fs_ptr->_data_table_free_head);
+        lowfat_fs_dl_free_busy_range(fs_ptr->_data_table, first_cluster, last_cluster, fs_ptr->_data_table_busy_tail, fs_ptr->_data_table_free_head);
         // 
-        lowfat_fs_dl_free_busy_range(fs_ptr->_filename_table_next, fs_ptr->_filename_table_prev, fd, fd, fs_ptr->_filename_table_busy_tail, fs_ptr->_filename_table_free_head);
+        lowfat_fs_dl_free_busy_range(fs_ptr->_filename_table, fd, fd, fs_ptr->_filename_table_busy_tail, fs_ptr->_filename_table_free_head);
         // reset properties
         (*fs_ptr->_used_memory) -= fi.props->size;
 #if LOWFAT_FS_VERBOSITY == LOWFAT_FS_VERBOSITY_DETAILED
@@ -378,13 +377,13 @@ int32_t lowfat_fs_remove_file_str(lowfat_fs* fs_ptr, const char* filename) {
 
 int32_t lowfat_fs_find_file(lowfat_fs* fs_ptr, const char* filename) {
     // linear search
-    int32_t busy_head = fs_ptr->_filename_table_next[fs_ptr->_last_system_cluster];
+    int32_t busy_head = fs_ptr->_filename_table[fs_ptr->_last_system_cluster].PAIR_NEXT;
     const uint32_t fileinfo_stride = sizeof(lowfat_fs_fileprops_t) + (*fs_ptr->_filename_length);
     while (busy_head != LOWFAT_FS_NONE) {
         if (strcmp((char*)(fs_ptr->_filenames + busy_head * fileinfo_stride), filename) == 0) {
             return busy_head;
         }
-        busy_head = fs_ptr->_filename_table_next[busy_head];
+        busy_head = fs_ptr->_filename_table[busy_head].PAIR_NEXT;
     }
     return LOWFAT_FS_ERROR_FILE_NOT_FOUND;
 }
@@ -496,7 +495,7 @@ int32_t lowfat_fs_get_descriptor(const lowfat_fs* const fs_ptr, uint32_t file_id
     if (file_idx < *fs_ptr->_file_count) {
         int32_t cur_fd = *fs_ptr->_filename_table_busy_tail;
         while (file_idx) {
-            cur_fd = fs_ptr->_filename_table_prev[cur_fd];
+            cur_fd = fs_ptr->_filename_table[cur_fd].PAIR_PREV;
             file_idx--;
         }
         return cur_fd;
@@ -509,7 +508,7 @@ uint32_t lowfat_fs_walk_over_all_files(const lowfat_fs* const fs_ptr, void* arg,
         int32_t cur_fd = *fs_ptr->_filename_table_busy_tail;
         while (cur_fd != LOWFAT_FS_NONE && (uint32_t)cur_fd < *fs_ptr->_cluster_count && (uint32_t)cur_fd > fs_ptr->_last_system_cluster) {
             procedure(cur_fd, arg);
-            cur_fd = fs_ptr->_filename_table_prev[cur_fd];
+            cur_fd = fs_ptr->_filename_table[cur_fd].PAIR_PREV;
         }
     }
     return *fs_ptr->_file_count;
