@@ -559,6 +559,7 @@ void test_randomized_dump(const float duration) {
         std::vector<uint8_t> redumped; // to fill from file
         FILE* dumpfile = nullptr;
         fopen_s(&dumpfile, "test.fs", "wb");
+        assert(dumpfile != nullptr);
         if (dumpfile) {
             size_t written = fwrite(dumped.data(), dumped.size(), 1, dumpfile);
             assert(written == 1ULL);
@@ -581,9 +582,9 @@ void test_randomized_dump(const float duration) {
         lowfat_fs_set_instance_addresses(fs_ref_ptr);
         // no reset here, because want to reuse
         check_lowfat_fs_files(fs_ref_ptr, filenames, sizes, crcs, (uint32_t)filenames.size());
-        for (uint32_t i = 0; i < filenames.size(); i++) {
-            lowfat_fs_remove_file_str(fs_ptr, filenames[i].c_str());
-            lowfat_fs_remove_file_str(fs_ref_ptr, filenames[i].c_str());
+        for (const auto& fname: filenames) {
+            lowfat_fs_remove_file_str(fs_ptr, fname.c_str());
+            lowfat_fs_remove_file_str(fs_ref_ptr, fname.c_str());
         }
         uint32_t sys_used_mem = lowfat_fs_total_size(fs_ptr) - lowfat_fs_free_available_mem_size(fs_ptr);
         uint32_t sys_used_mem_ref = lowfat_fs_system_used_clusters(fs_ptr) * lowfat_fs_cluster_size(fs_ptr);
@@ -816,17 +817,17 @@ extern "C" {
         test_crc32();
         auto rw_test_func = [](void const* arg) {
             MAYBE_UNUSED(arg);
-            test_randomized_rw(240.0f);
+            test_randomized_rw(600.0f);
             return 0;
         };
         auto dump_test_func = [](void const* arg) {
             MAYBE_UNUSED(arg);
-            test_randomized_dump(240.0f);
+            test_randomized_dump(600.0f);
             return 0;
         };
         auto partial_dump_test_func = [](void const* arg) {
             MAYBE_UNUSED(arg);
-            test_randomized_partial_dump(240.0f);
+            test_randomized_partial_dump(600.0f);
             return 0;
         };
         
