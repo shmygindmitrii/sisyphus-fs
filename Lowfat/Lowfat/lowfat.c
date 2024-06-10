@@ -96,7 +96,7 @@ lowfat_fs* lowfat_fs_create_instance(uint32_t cluster_size, uint32_t cluster_cou
     fs_ptr->_header->_cluster_count = cluster_count;
     fs_ptr->_header->_filename_length = filename_length;
 
-    fs_ptr->_info._system_used_size = 6 * sizeof(uint32_t) + 4 * sizeof(int32_t) + (sizeof(lowfat_fs_fileprops_t) + filename_length + sizeof(int32_t) * 4 + sizeof(uint16_t)) * cluster_count;
+    fs_ptr->_info._system_used_size = sizeof(lowfat_fs_header) + (sizeof(lowfat_fs_fileprops_t) + filename_length + sizeof(int32_t) * 4 + sizeof(uint16_t)) * cluster_count;
     fs_ptr->_info._system_used_clusters = fs_ptr->_info._system_used_size / cluster_size + (fs_ptr->_info._system_used_size % cluster_size > 0);
     fs_ptr->_info._last_system_cluster = fs_ptr->_info._system_used_clusters - 1;
     fs_ptr->_info._clusters_touched = 0;
@@ -411,7 +411,7 @@ lowfat_fs_fileinfo_t lowfat_fs_file_stat_str(lowfat_fs* fs_ptr, const char* name
 
 uint32_t lowfat_fs_free_available_mem_size(const lowfat_fs* const fs_ptr) {
     // real writable amount of memory
-    return fs_ptr->_header->_cluster_count - fs_ptr->_header->_used_cluster_count * fs_ptr->_header->_cluster_size;
+    return (fs_ptr->_header->_cluster_count - fs_ptr->_header->_used_cluster_count) * fs_ptr->_header->_cluster_size;
 }
 
 uint32_t lowfat_fs_file_count(const lowfat_fs* const fs_ptr) {
