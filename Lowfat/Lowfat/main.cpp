@@ -15,15 +15,56 @@
 #include <variant>
 #include <random>
 #include <atomic>
+#include <cstdlib>
 
 #include "crc32_ccit.h"
 #include "lowfat.h"
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
+namespace {
+    template<typename T>
+    void maybe_unused(T&&) {}
+}
+
+#define MAYBE_UNUSED(x) maybe_unused(x);
+
 static std::unordered_map<intptr_t, size_t> allocated_table = {};
 static size_t allocated_total = 0;
 
+class SpinLock_t {
+public:
+    void lock() {
+        while (_flag.test_and_set(std::memory_order_acquire)) {
+            // nothing to do, just wait
+            // test_and_set sets always to true and return previous value
+            // if it is true already, then true is returned and cycle continues
+            // until clear sets it to false
+        }
+    }
+    void unlock() { 
+        _flag.clear(std::memory_order_release);
+    }
+private:
+    std::atomic_flag _flag = ATOMIC_FLAG_INIT;
+};
+
+static SpinLock_t s_allocator_lock;
+
+class SpinLockAllocatorGuard {
+public:
+    SpinLockAllocatorGuard() {
+        s_allocator_lock.lock();
+    }
+    ~SpinLockAllocatorGuard() {
+        s_allocator_lock.unlock();
+    }
+};
+
 extern "C" {
     void* user_malloc(size_t size) {
+        const SpinLockAllocatorGuard G;
         void* ptr = malloc(size);
         allocated_table[(intptr_t)ptr] = size;
         allocated_total += size;
@@ -31,6 +72,7 @@ extern "C" {
     }
 
     void user_free(void* ptr) {
+        const SpinLockAllocatorGuard G;
         assert(allocated_table.find((intptr_t)ptr) != allocated_table.end());
         allocated_total -= allocated_table[(intptr_t)ptr];
         allocated_table.erase((intptr_t)ptr);
@@ -397,8 +439,6 @@ void test_crc32() {
         printf("File remainder lookuped: %#010x\n", fst.props->crc32);
     }
     lowfat_fs_destroy_instance(fs_ptr);
-    LOWFAT_FS_ASSERT(allocated_table.empty());
-    LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
 void test_simple_rw() {
@@ -470,8 +510,6 @@ void test_simple_rw() {
         lowfat_fs_close_file(fs_ptr, text_fd);
     }
     lowfat_fs_destroy_instance(fs_ptr);
-    LOWFAT_FS_ASSERT(allocated_table.empty());
-    LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
 void test_randomized_rw(const float duration) {
@@ -486,8 +524,6 @@ void test_randomized_rw(const float duration) {
     test_fs_readback(fs_ptr, duration);
     // test end
     lowfat_fs_destroy_instance(fs_ptr);
-    LOWFAT_FS_ASSERT(allocated_table.empty());
-    LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
 void test_randomized_dump(const float duration) {
@@ -563,8 +599,6 @@ void test_randomized_dump(const float duration) {
     }
     printf("File system randomized dump test finished: %u cycles of fullfilling and working over dumped fs\n", cycle_idx);
     lowfat_fs_destroy_instance(fs_ptr);
-    LOWFAT_FS_ASSERT(allocated_table.empty());
-    LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
 static const char s_dumpname[] = "test_fs.bin";
@@ -715,8 +749,64 @@ void test_randomized_partial_dump(const float duration) {
         user_free(fs_ptr->_data);
         lowfat_fs_destroy_instance(fs_ptr);
     }
-    LOWFAT_FS_ASSERT(allocated_table.empty());
-    LOWFAT_FS_ASSERT(allocated_total == 0);
+    
+}
+
+
+using THREADFUNC = int(*)(void const* data);
+
+struct ThreadData_t {
+    THREADFUNC func;
+    void const* args;
+    HANDLE start;
+    uint64_t affinity_mask;
+};
+
+DWORD WINAPI win_thread_function(LPVOID lpParam) {
+    auto const* thread_data = reinterpret_cast<const ThreadData_t*>(lpParam);
+    THREADFUNC func = thread_data->func;
+    void const* args = thread_data->args;
+    HANDLE start = thread_data->start;
+    uint64_t affinity_mask = thread_data->affinity_mask;
+    if (affinity_mask > 0) {
+        SetThreadAffinityMask(GetCurrentThread(), affinity_mask);
+    }
+    SetEvent(start);
+    return func(args);
+}
+
+struct Thread {
+    intptr_t handle;
+};
+
+std::wstring to_wstring(const std::string& str) {
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+    std::wstring wstr(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstr[0], size_needed);
+    return wstr;
+}
+
+void set_thread_affinity(Thread thread, uint64_t mask) {
+    SetThreadAffinityMask(reinterpret_cast<HANDLE>(thread.handle), mask);
+}
+
+Thread create_thread(const char* title_str, size_t stack_size, uint64_t affinity_mask, THREADFUNC func, void const* args) {
+    HANDLE start = CreateEventEx(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE);
+    const DWORD flags = stack_size ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0;
+    ThreadData_t thread_args{ func, args, start, affinity_mask };
+    HANDLE thread = CreateThread(nullptr, stack_size, win_thread_function, &thread_args, flags, nullptr);
+    WaitForSingleObject(start, INFINITE);
+    CloseHandle(start);
+    std::string title(title_str);
+    std::wstring wtitle = to_wstring(title);
+    SetThreadDescription(thread, wtitle.c_str());
+    return Thread{ reinterpret_cast<intptr_t>(thread) };
+}
+
+void join_thread(Thread thread) {
+    HANDLE thread_handle = reinterpret_cast<HANDLE>(thread.handle);
+    WaitForSingleObject(thread_handle, INFINITE);
+    CloseHandle(thread_handle);
 }
 
 extern "C" {
@@ -724,9 +814,30 @@ extern "C" {
     {
         test_simple_rw();
         test_crc32();
-        test_randomized_rw(240.0f);
-        test_randomized_dump(240.0f);
-        test_randomized_partial_dump(240.0f);
+        auto rw_test_func = [](void const* arg) {
+            MAYBE_UNUSED(arg);
+            test_randomized_rw(240.0f);
+            return 0;
+        };
+        auto dump_test_func = [](void const* arg) {
+            MAYBE_UNUSED(arg);
+            test_randomized_dump(240.0f);
+            return 0;
+        };
+        auto partial_dump_test_func = [](void const* arg) {
+            MAYBE_UNUSED(arg);
+            test_randomized_partial_dump(240.0f);
+            return 0;
+        };
+        
+        Thread rw_test_thread = create_thread("rw_test_thread", 0, 0, rw_test_func, nullptr);
+        Thread dump_test_thread = create_thread("dump_test_thread", 0, 0, dump_test_func, nullptr);
+        Thread partial_dump_test_thread = create_thread("partial_dump_test_thread", 0, 0, partial_dump_test_func, nullptr);
+        join_thread(rw_test_thread);
+        join_thread(dump_test_thread);
+        join_thread(partial_dump_test_thread);
+        LOWFAT_FS_ASSERT(allocated_table.empty());
+        LOWFAT_FS_ASSERT(allocated_total == 0);
         return 0;
     }
 }
