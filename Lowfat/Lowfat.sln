@@ -7,12 +7,18 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Lowfat", "Lowfat\Lowfat.vcx
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug_Opt|x64 = Debug_Opt|x64
+		Debug_Opt|x86 = Debug_Opt|x86
 		Debug|x64 = Debug|x64
 		Debug|x86 = Debug|x86
 		Release|x64 = Release|x64
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6B1DE6AB-062E-421F-843B-46B32CFE7F29}.Debug_Opt|x64.ActiveCfg = Debug_Opt|x64
+		{6B1DE6AB-062E-421F-843B-46B32CFE7F29}.Debug_Opt|x64.Build.0 = Debug_Opt|x64
+		{6B1DE6AB-062E-421F-843B-46B32CFE7F29}.Debug_Opt|x86.ActiveCfg = Debug_Opt|Win32
+		{6B1DE6AB-062E-421F-843B-46B32CFE7F29}.Debug_Opt|x86.Build.0 = Debug_Opt|Win32
 		{6B1DE6AB-062E-421F-843B-46B32CFE7F29}.Debug|x64.ActiveCfg = Debug|x64
 		{6B1DE6AB-062E-421F-843B-46B32CFE7F29}.Debug|x64.Build.0 = Debug|x64
 		{6B1DE6AB-062E-421F-843B-46B32CFE7F29}.Debug|x86.ActiveCfg = Debug|Win32
