@@ -211,7 +211,7 @@ int32_t lowfat_fs_open_file(lowfat_fs* fs_ptr, const char* filename, char mode) 
         fi.props->current_byte = 0;
         fi.props->locked = (LOWFAT_FS_FILE_LOCKED | LOWFAT_FS_FILE_WRITE);
         fs_ptr->_cluster_flags[fi.props->last_cluster] |= LOWFAT_FS_CLUSTER_TOUCHED;
-#if LOWFAT_FS_VERBOSITY == LOWFAT_FS_VERBOSITY_MAX
+#if defined(LOWFAT_FS_VERBOSITY) && LOWFAT_FS_VERBOSITY == LOWFAT_FS_VERBOSITY_MAX
         printf("OPEN[%d]: touched cluster %d \n", fs_ptr->_header->_file_count, fi.props->last_cluster);
 #endif
         fs_ptr->_header->_file_count++;
@@ -316,7 +316,7 @@ int32_t lowfat_fs_close_file(lowfat_fs* fs_ptr, int32_t fd) {
 #if LOWFAT_FS_FORBID_EMPTY_FILES
         LOWFAT_FS_ASSERT(fi.props->size != 0);
 #endif
-#if LOWFAT_FS_VERBOSITY == LOWFAT_FS_VERBOSITY_DETAILED
+#if defined(LOWFAT_FS_VERBOSITY) && LOWFAT_FS_VERBOSITY == LOWFAT_FS_VERBOSITY_DETAILED
         if (fi.props->locked & LOWFAT_FS_FILE_WRITE) {
             printf("Close descriptor %d of size %u and crc32 = %u, space remains = %u bytes\n", fd, fi.props->size, fi.props->crc32, lowfat_fs_free_available_mem_size(fs_ptr));
         }
@@ -345,7 +345,7 @@ uint32_t lowfat_fs_remove_file(lowfat_fs* fs_ptr, int32_t fd) {
         lowfat_fs_dl_free_busy_range(fs_ptr->_filename_table, fd, fd, &fs_ptr->_header->_filename_table_busy_tail, &fs_ptr->_header->_filename_table_free_head);
         // reset properties
         fs_ptr->_header->_used_memory -= fi.props->size;
-#if LOWFAT_FS_VERBOSITY == LOWFAT_FS_VERBOSITY_DETAILED
+#if defined(LOWFAT_FS_VERBOSITY) && LOWFAT_FS_VERBOSITY == LOWFAT_FS_VERBOSITY_DETAILED
         printf("Remove file '%s' of size %u\n", fi.name, fi.props->size);
 #endif
         memset(fi.name, 0, fs_ptr->_header->_filename_length);
