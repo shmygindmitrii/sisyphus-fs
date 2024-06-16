@@ -15,7 +15,6 @@ uint32_t lowfat_fs_dl_calculate_range_length(const structures_int_pair_t* const 
 
 #pragma pack(push, 1)
 typedef struct {
-    uint64_t mtime;
     uint32_t size;
     uint32_t crc32;
     int32_t first_cluster;

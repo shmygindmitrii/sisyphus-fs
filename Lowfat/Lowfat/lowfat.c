@@ -65,7 +65,6 @@ uint32_t lowfat_fs_dl_calculate_range_length(const structures_int_pair_t* const 
 // fileprops 
 
 void lowfat_fs_reset_fileprops(lowfat_fs_fileprops_t* props) {
-    props->mtime = 0; 
     props->size = 0;
     props->crc32 = CRC32_CCIT_DEFAULT_VALUE;
     props->first_cluster = LOWFAT_FS_NONE;
@@ -203,7 +202,6 @@ int32_t lowfat_fs_open_file(lowfat_fs* fs_ptr, const char* filename, char mode) 
         // add to _fileinfos first free first_cluster
         lowfat_fs_fileinfo_t fi = lowfat_fs_create_fileinfo(fs_ptr->_filenames + fd * fileinfo_stride, fs_ptr->_fileprops + fd * fileinfo_stride);
         sprintf_s(fi.name, fs_ptr->_header->_filename_length, filename);
-        fi.props->mtime = 0;
         fi.props->size = 0;
         fi.props->first_cluster = fs_ptr->_header->_data_table_busy_tail;
         fi.props->last_cluster = fs_ptr->_header->_data_table_busy_tail;
