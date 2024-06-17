@@ -27,6 +27,9 @@
     <ClCompile Include="structures.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="linkfs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="crc32_ccit.h">
@@ -45,6 +48,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="structures_prelude.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="linkfs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="linkfs_prelude.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="linkfs_defines.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

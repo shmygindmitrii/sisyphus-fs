@@ -189,12 +189,16 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="crc32_ccit.c" />
+    <ClCompile Include="linkfs.c" />
     <ClCompile Include="lowfat.c" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="structures.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="crc32_ccit.h" />
+    <ClInclude Include="linkfs.h" />
+    <ClInclude Include="linkfs_defines.h" />
+    <ClInclude Include="linkfs_prelude.h" />
     <ClInclude Include="lowfat.h" />
     <ClInclude Include="lowfat_defines.h" />
     <ClInclude Include="lowfat_prelude.h" />
