@@ -275,13 +275,16 @@ size_t linkfs_read_file(linkfs_file_t* file_ptr, linkfs_memory_block_t* buffer, 
         length = length > file_ptr->size - read ? file_ptr->size - read : length;
         size_t requested = length;
         while (length) {
-            size_t remains_in_block = length > file_ptr->block_size ? file_ptr->block_size : length;
+            size_t remains_in_block = length > file_ptr->block_size - file_ptr->current_byte ? file_ptr->block_size - file_ptr->current_byte : length;
             memcpy(buffer->data, file_ptr->current->block->data[file_ptr->current_byte], remains_in_block);
             length -= remains_in_block;
+            file_ptr->current_byte += remains_in_block;
             if (length) {
                 file_ptr->current = file_ptr->current->next;
                 file_ptr->current_index++;
+                file_ptr->current_byte = 0;
             }
+
         }
         return requested;
     }
