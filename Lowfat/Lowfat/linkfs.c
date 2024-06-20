@@ -50,10 +50,10 @@ void linkfs_destroy_string(linkfs_string_t* str_ptr) {
     }
 }
 
-linkfs_memory_block_t* linkfs_create_memory_block(size_t block_size) {
+linkfs_memory_block_t* linkfs_create_memory_block(size_t size) {
     linkfs_memory_block_t* block_ptr = LINKFS_ALLOC(sizeof(linkfs_memory_block_t));
-    block_ptr->size = block_size;
-    block_ptr->data = LINKFS_ALLOC(block_size);
+    block_ptr->size = size;
+    block_ptr->data = LINKFS_ALLOC(size);
     return block_ptr;
 }
 
@@ -252,7 +252,7 @@ size_t linkfs_total_size(const linkfs* const fs_ptr) {
 
 // file API
 
-linkfs_file_t* linkfs_create_new_file(linkfs* fs_ptr, const char* filename, size_t block_size) {
+linkfs_file_t* linkfs_open_new_file(linkfs* fs_ptr, const char* filename, size_t block_size) {
     if (fs_ptr) {
         return linkfs_file_vector_append_new(fs_ptr->files, filename, block_size);
     }
@@ -335,6 +335,7 @@ size_t linkfs_write_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* c
             buffer_offset += bytes_can_be_written;
             linkfs_file_append_cluster(file_ptr);
         }
+        return buffer->size;
     }
     LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> fs_ptr is NULL\n", __FILE__, __LINE__);
     return 0;

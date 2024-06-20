@@ -54,7 +54,7 @@ void linkfs_destroy_string(linkfs_string_t* str_ptr);
 
 // memory block 
 
-linkfs_memory_block_t* linkfs_create_memory_block(size_t block_size);
+linkfs_memory_block_t* linkfs_create_memory_block(size_t size);
 void linkfs_destroy_memory_block(linkfs_memory_block_t* block_ptr);
 
 // cluster
@@ -89,6 +89,7 @@ size_t linkfs_total_size(const linkfs* const fs_ptr);
 size_t linkfs_read_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* const buffer);
 size_t linkfs_write_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* const buffer);
 void linkfs_reset_file_cursor(linkfs_file_t* file_ptr);
+linkfs_file_t* linkfs_open_new_file(linkfs* fs_ptr, const char* filename, size_t block_size);
 linkfs_file_t* linkfs_open_file(linkfs* fs_ptr, const char* filename, char mode);
 int32_t linkfs_close_file(linkfs_file_t* file_ptr);
 uint32_t linkfs_remove_file(linkfs* fs_ptr, linkfs_file_t* file_ptr);
