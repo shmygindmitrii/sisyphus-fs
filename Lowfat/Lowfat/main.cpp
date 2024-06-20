@@ -19,6 +19,7 @@
 
 #include "crc32_ccit.h"
 #include "lowfat.h"
+#include "linkfs.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -839,8 +840,44 @@ void test_lowfat_fs() {
     LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
-void test_linkfs_simple_rw() {
+uint32_t fill_random_memory_block_and_calc_crc32(linkfs_memory_block_t* block) {
+    RandomUint32Generator rand_gen;
+    size_t size = block->size;
+    uint32_t* block_data = reinterpret_cast<uint32_t*>(block->data);
+    size_t idx = 0;
+    while (size > 4) {
+        block_data[idx++] = rand_gen();
+        size -= 4;
+    }
+    for (idx = block->size - size; idx < size; idx++) {
+        block->data[idx] = static_cast<uint8_t>(rand_gen() % 256);
+    }
+    return crc32_ccit_update(block->data, static_cast<uint32_t>(block->size), CRC32_CCIT_DEFAULT_VALUE);
+}
 
+void write_to_linkfs_instance_random_file(linkfs* fs_ptr, size_t file_max_size, size_t file_block_max_size) {
+    if (fs_ptr) {
+        // always new file
+        static size_t s_call_idx = 0;
+        RandomUint32Generator rand_gen;
+        size_t file_size = static_cast<size_t>(max(16, rand_gen())) % file_max_size;
+        size_t block_size = static_cast<size_t>(max(16, rand_gen())) % file_block_max_size;
+
+        linkfs_memory_block_t* file_content = linkfs_create_memory_block(file_size);
+        uint32_t crc = fill_random_memory_block_and_calc_crc32(file_content);
+        
+        std::string fname = "test_file_" + std::to_string(s_call_idx) + ".bin";
+        s_call_idx++;
+        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, fname.c_str(), block_size);
+        size_t bytes_written = linkfs_write_file(file_ptr, file_content);
+    }
+}
+
+void test_linkfs_simple_rw() {
+    linkfs* fs_ptr = linkfs_create_instance();
+    if (linkfs_find_file(fs_ptr, "test0.txt") == NULL) {
+        linkfs_file_t* file_ptr = linkfs_create_file("test0.txt", 256);
+    }
 }
 
 void test_linkfs() {
