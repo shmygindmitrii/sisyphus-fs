@@ -82,7 +82,7 @@ void linkfs_set_default_file(linkfs_file_t* file_ptr, size_t block_size) {
     file_ptr->block_size = block_size;
     file_ptr->block_count = 1;
     file_ptr->size = 0;
-    file_ptr->crc = CRC32_CCIT_DEFAULT_VALUE;
+    file_ptr->crc = 0;
     file_ptr->start = linkfs_create_cluster(block_size);
     file_ptr->current = file_ptr->start;
     file_ptr->current_index = 0;
@@ -125,7 +125,7 @@ void linkfs_destroy_file(linkfs_file_t* file_ptr) {
         file_ptr->block_size = 0;
         file_ptr->block_count = 0;
         file_ptr->size = 0;
-        file_ptr->crc = CRC32_CCIT_DEFAULT_VALUE;
+        file_ptr->crc = 0;
         file_ptr->start = NULL;
         file_ptr->current = NULL;
         file_ptr->current_index = 0;

@@ -66,7 +66,7 @@ uint32_t lowfat_fs_dl_calculate_range_length(const structures_int_pair_t* const 
 
 void lowfat_fs_reset_fileprops(lowfat_fs_fileprops_t* props) {
     props->size = 0;
-    props->crc32 = CRC32_CCIT_DEFAULT_VALUE;
+    props->crc32 = 0;
     props->first_cluster = LOWFAT_FS_NONE;
     props->last_cluster = LOWFAT_FS_NONE;
     props->current_cluster = LOWFAT_FS_NONE;
@@ -292,7 +292,7 @@ int32_t lowfat_fs_write_file(lowfat_fs* fs_ptr, const uint8_t* const buf, uint32
             buf_offset += mem_can_write;
             total_write_size -= mem_can_write;
         }
-        fi.props->crc32 = crc32_ccit_update(buf, elem_size * count, fi.props->crc32);
+        fi.props->crc32 = crc32_ccit_update(buf, elem_size * count, fi.props->crc32 ^ 0xFFFFFFFF);
         fs_ptr->_header->_used_memory += elem_size * count;
         lowfat_fs_increment_touched_clusters_count(fs_ptr, fs_ptr->_header->_used_cluster_count - prev_used_clusters);
         return count;
