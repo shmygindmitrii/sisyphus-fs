@@ -754,7 +754,6 @@ void test_randomized_partial_dump(const float duration) {
     
 }
 
-
 using THREADFUNC = int(*)(void const* data);
 
 struct ThreadData_t {
@@ -849,35 +848,81 @@ uint32_t fill_random_memory_block_and_calc_crc32(linkfs_memory_block_t* block) {
         block_data[idx++] = rand_gen();
         size -= 4;
     }
-    for (idx = block->size - size; idx < size; idx++) {
+    for (idx = block->size - size; idx < block->size; idx++) {
         block->data[idx] = static_cast<uint8_t>(rand_gen() % 256);
     }
     return crc32_ccit_update(block->data, static_cast<uint32_t>(block->size), CRC32_CCIT_DEFAULT_VALUE);
 }
 
-void write_to_linkfs_instance_random_file(linkfs* fs_ptr, size_t file_max_size, size_t file_block_max_size) {
+enum class null_pointer_t {};
+static const null_pointer_t null_pointer = {};
+
+Result<write_info_t, null_pointer_t> write_to_linkfs_instance_random_file(linkfs* fs_ptr, size_t file_max_size, size_t file_block_max_size) {
     if (fs_ptr) {
         // always new file
         static size_t s_call_idx = 0;
         RandomUint32Generator rand_gen;
+        write_info_t wrinfo = {};
         size_t file_size = static_cast<size_t>(max(16, rand_gen())) % file_max_size;
         size_t block_size = static_cast<size_t>(max(16, rand_gen())) % file_block_max_size;
-
         linkfs_memory_block_t* file_content = linkfs_create_memory_block(file_size);
-        uint32_t crc = fill_random_memory_block_and_calc_crc32(file_content);
-        
-        std::string fname = "test_file_" + std::to_string(s_call_idx) + ".bin";
+        wrinfo.crc = fill_random_memory_block_and_calc_crc32(file_content);
+        wrinfo.filesize = static_cast<uint32_t>(file_size);
+        wrinfo.fname = "test_file_" + std::to_string(s_call_idx) + ".bin";
         s_call_idx++;
-        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, fname.c_str(), block_size);
+        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, wrinfo.fname.c_str(), block_size);
         size_t bytes_written = linkfs_write_file(file_ptr, file_content);
+        assert(bytes_written == file_content->size);
+        linkfs_destroy_memory_block(file_content);
+        return Result<write_info_t, null_pointer_t>(wrinfo);
     }
+    return Result<write_info_t, null_pointer_t>(null_pointer);
 }
 
 void test_linkfs_simple_rw() {
     linkfs* fs_ptr = linkfs_create_instance();
-    if (linkfs_find_file(fs_ptr, "test0.txt") == NULL) {
-        linkfs_file_t* file_ptr = linkfs_create_file("test0.txt", 256);
+    // revisit crc calculations
+    const char test_abc[] = "ABC";
+    uint32_t crc_test_0 = crc32_ccit_update(reinterpret_cast<const uint8_t*>(test_abc),     3, CRC32_CCIT_DEFAULT_VALUE); // start from filled to do not shift initial crc zeros
+    uint32_t crc_test_1 = crc32_ccit_update(reinterpret_cast<const uint8_t*>(test_abc),     1, CRC32_CCIT_DEFAULT_VALUE);
+    uint32_t crc_test_2 = crc32_ccit_update(reinterpret_cast<const uint8_t*>(test_abc) + 1, 1, crc_test_1 ^ 0xFFFFFFFF);
+    uint32_t crc_test_3 = crc32_ccit_update(reinterpret_cast<const uint8_t*>(test_abc) + 2, 1, crc_test_2 ^ 0xFFFFFFFF);
+    assert(crc_test_3 == crc_test_0);
+    {
+        const char* filename = "test0.bin";
+        linkfs_memory_block_t* block = linkfs_create_memory_block(3);
+        memcpy(block->data, test_abc, 3);
+        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename, 2);
+        size_t written = linkfs_write_file(file_ptr, block);
+        assert(written == block->size);
+        assert(linkfs_total_size(fs_ptr) == 4ULL);
+        assert(crc_test_3 == file_ptr->crc);
+        linkfs_remove_file_str(fs_ptr, filename);
+        assert(linkfs_total_size(fs_ptr) == 0ULL);
+        linkfs_destroy_memory_block(block);
     }
+    {
+        const char* filename = "test1.bin";
+        linkfs_memory_block_t* block = linkfs_create_memory_block(2049);
+        uint32_t crc = fill_random_memory_block_and_calc_crc32(block);
+        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename, 1024);
+        size_t written = linkfs_write_file(file_ptr, block);
+        assert(written == block->size);
+        assert(linkfs_total_size(fs_ptr) == 3072ULL);
+        assert(crc == file_ptr->crc);
+        linkfs_remove_file_str(fs_ptr, filename);
+        assert(linkfs_total_size(fs_ptr) == 0ULL);
+        linkfs_destroy_memory_block(block);
+    }
+    linkfs_destroy_instance(fs_ptr);
+    assert(allocated_table.empty());
+    assert(allocated_total == 0);
+}
+
+void test_linkfs_randomized_rw() {
+    //const size_t max_block_size = 4096; // 4 KiB
+    //const size_t max_file_size = max_block_size * 16; // 64 KiB
+    //const size_t max_fs_size = max_block_size * 2048; // 8 MiB
 }
 
 void test_linkfs() {
