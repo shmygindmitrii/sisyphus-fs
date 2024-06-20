@@ -810,35 +810,48 @@ void join_thread(Thread thread) {
     CloseHandle(thread_handle);
 }
 
+void test_lowfat_fs() {
+    test_simple_rw();
+    test_crc32();
+    auto rw_test_func = [](void const* arg) {
+        MAYBE_UNUSED(arg);
+        test_randomized_rw(600.0f);
+        return 0;
+        };
+    auto dump_test_func = [](void const* arg) {
+        MAYBE_UNUSED(arg);
+        test_randomized_dump(600.0f);
+        return 0;
+        };
+    auto partial_dump_test_func = [](void const* arg) {
+        MAYBE_UNUSED(arg);
+        test_randomized_partial_dump(600.0f);
+        return 0;
+        };
+
+    Thread rw_test_thread = create_thread("rw_test_thread", 0, 0, rw_test_func, nullptr);
+    Thread dump_test_thread = create_thread("dump_test_thread", 0, 0, dump_test_func, nullptr);
+    Thread partial_dump_test_thread = create_thread("partial_dump_test_thread", 0, 0, partial_dump_test_func, nullptr);
+    join_thread(rw_test_thread);
+    join_thread(dump_test_thread);
+    join_thread(partial_dump_test_thread);
+    LOWFAT_FS_ASSERT(allocated_table.empty());
+    LOWFAT_FS_ASSERT(allocated_total == 0);
+}
+
+void test_linkfs_simple_rw() {
+
+}
+
+void test_linkfs() {
+    test_linkfs_simple_rw();
+}
+
 extern "C" {
     int main()
     {
-        test_simple_rw();
-        test_crc32();
-        auto rw_test_func = [](void const* arg) {
-            MAYBE_UNUSED(arg);
-            test_randomized_rw(600.0f);
-            return 0;
-        };
-        auto dump_test_func = [](void const* arg) {
-            MAYBE_UNUSED(arg);
-            test_randomized_dump(600.0f);
-            return 0;
-        };
-        auto partial_dump_test_func = [](void const* arg) {
-            MAYBE_UNUSED(arg);
-            test_randomized_partial_dump(600.0f);
-            return 0;
-        };
-        
-        Thread rw_test_thread = create_thread("rw_test_thread", 0, 0, rw_test_func, nullptr);
-        Thread dump_test_thread = create_thread("dump_test_thread", 0, 0, dump_test_func, nullptr);
-        Thread partial_dump_test_thread = create_thread("partial_dump_test_thread", 0, 0, partial_dump_test_func, nullptr);
-        join_thread(rw_test_thread);
-        join_thread(dump_test_thread);
-        join_thread(partial_dump_test_thread);
-        LOWFAT_FS_ASSERT(allocated_table.empty());
-        LOWFAT_FS_ASSERT(allocated_total == 0);
+        //test_lowfat_fs();
+        test_linkfs();
         return 0;
     }
 }

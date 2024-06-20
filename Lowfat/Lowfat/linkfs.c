@@ -13,11 +13,24 @@ extern void user_free(void*);
 #define LINKFS_FREE free
 #endif
 
-// TODO: here should be something good and helpful
-#ifdef LINKFS_CUSTOM_BREAK
+#define LINKFS_PRINT_ERROR "[ linkfs ][ error ]: "
+#define LINKFS_PRINT_WARNING "[ linkfs ][ warning ]: "
+#define LINKFS_PRINT_INFO "[ linkfs ][ info ]: "
+
+void default_debugbreak(const char* const format, ...) {
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fflush(stderr);
+    __debugbreak();
+}
+
+#ifdef LINKFS_CUSTOM_DEBUGBREAK
+extern void user_debugbreak(const char* const format, ...);
 #define LINKFS_DEBUGBREAK user_debugbreak
 #else
-#define LINKFS_DEBUGBREAK __debugbreak
+#define LINKFS_DEBUGBREAK default_debugbreak
 #endif
 
 linkfs_string_t* linkfs_create_string(const char* line) {
@@ -94,7 +107,7 @@ linkfs_cluster_t* linkfs_file_append_cluster(linkfs_file_t* file_ptr) {
         file_ptr->size += file_ptr->block_size;
         return file_ptr->current;
     }
-    LINKFS_DEBUGBREAK();
+    LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> file_ptr is NULL\n", __FILE__, __LINE__);
     return NULL;
 }
 
@@ -243,7 +256,7 @@ linkfs_file_t* linkfs_create_new_file(linkfs* fs_ptr, const char* filename, size
     if (fs_ptr) {
         return linkfs_file_vector_append_new(fs_ptr->files, filename, block_size);
     }
-    LINKFS_DEBUGBREAK();
+    LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> fs_ptr is NULL\n", __FILE__, __LINE__);
     return NULL;
 }
 
@@ -253,7 +266,7 @@ linkfs_file_t* linkfs_open_file(linkfs* fs_ptr, const char* filename, char mode)
         if (file_ptr) {
             // exists
             if (file_ptr->flags & LINKFS_FILE_LOCKED) {
-                LINKFS_DEBUGBREAK();
+                LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "file '%s' is already opened\n", filename);
                 return NULL;
             }
             if (mode == 'w') {
@@ -279,7 +292,7 @@ linkfs_file_t* linkfs_open_file(linkfs* fs_ptr, const char* filename, char mode)
             return NULL;
         }
     }
-    LINKFS_DEBUGBREAK();
+    LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> fs_ptr is NULL\n", __FILE__, __LINE__);
     return NULL;
 }
 
@@ -323,7 +336,7 @@ size_t linkfs_write_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* c
             linkfs_file_append_cluster(file_ptr);
         }
     }
-    LINKFS_DEBUGBREAK();
+    LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> fs_ptr is NULL\n", __FILE__, __LINE__);
     return 0;
 }
 
@@ -352,7 +365,7 @@ uint32_t linkfs_remove_file(linkfs* fs_ptr, linkfs_file_t* file_ptr) {
     if (fs_ptr) {
         return linkfs_file_vector_remove(fs_ptr->files, file_ptr);
     }
-    LINKFS_DEBUGBREAK();
+    LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> fs_ptr is NULL\n", __FILE__, __LINE__);
     return 0;
 }
 
@@ -360,6 +373,7 @@ int32_t linkfs_remove_file_str(linkfs* fs_ptr, const char* filename) {
     if (fs_ptr) {
         return linkfs_file_vector_remove_str(fs_ptr->files, filename);
     }
+    LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> fs_ptr is NULL\n", __FILE__, __LINE__);
     return -1;
 }
 
@@ -367,6 +381,7 @@ linkfs_file_t* linkfs_find_file(linkfs* fs_ptr, const char* filename) {
     if (fs_ptr) {
         return linkfs_file_vector_find(fs_ptr->files, filename);
     }
+    LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> fs_ptr is NULL\n", __FILE__, __LINE__);
     return NULL;
 }
 
@@ -379,5 +394,6 @@ size_t linkfs_walk_over_all_files(const linkfs* const fs_ptr, void* arg, void(*p
         }
         return fs_ptr->files->size;
     }
+    LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> fs_ptr is NULL\n", __FILE__, __LINE__);
     return 0;
 }
