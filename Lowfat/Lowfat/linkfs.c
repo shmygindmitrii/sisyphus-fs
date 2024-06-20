@@ -292,7 +292,7 @@ size_t linkfs_read_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* co
         size_t buffer_offset = 0;
         while (length) {
             size_t remains_in_block = length > file_ptr->block_size - file_ptr->current_byte ? file_ptr->block_size - file_ptr->current_byte : length;
-            //memcpy(buffer->data[buffer_offset], file_ptr->current->block->data[file_ptr->current_byte], remains_in_block);
+            memcpy(&buffer->data[buffer_offset], &file_ptr->current->block->data[file_ptr->current_byte], remains_in_block);
             length -= remains_in_block;
             buffer_offset += remains_in_block;
             file_ptr->current_byte += remains_in_block;
@@ -314,7 +314,7 @@ size_t linkfs_write_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* c
         while (1) {
             size_t remains_in_block = file_ptr->block_size - file_ptr->current_byte;
             size_t bytes_can_be_written = write_bytes > remains_in_block ? remains_in_block : write_bytes;
-            //memcpy(file_ptr->current->block->data[file_ptr->current_byte], buffer->data[buffer_offset], bytes_can_be_written);
+            memcpy(&file_ptr->current->block->data[file_ptr->current_byte], &buffer->data[buffer_offset], bytes_can_be_written);
             write_bytes -= bytes_can_be_written;
             if (write_bytes == 0) {
                 break;
