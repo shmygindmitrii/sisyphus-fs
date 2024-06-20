@@ -19,9 +19,9 @@ typedef struct {
     uint8_t* data;
 } linkfs_memory_block_t;
 
-typedef struct linkfs_cluster_t {
+typedef struct linkfs_cluster {
     linkfs_memory_block_t* block;
-    linkfs_cluster_t* next;
+    struct linkfs_cluster* next;
 } linkfs_cluster_t;
 
 typedef struct {
@@ -44,7 +44,6 @@ typedef struct {
 } linkfs_file_vector_t;
 
 typedef struct {
-    size_t default_block_size;
     linkfs_file_vector_t* files;
 } linkfs;
 
@@ -65,7 +64,7 @@ void linkfs_destroy_cluster(linkfs_cluster_t* cluster_ptr);
 
 // file
 
-linkfs_string_t* linkfs_create_file(const char* filename, size_t block_size);
+linkfs_file_t* linkfs_create_file(const char* filename, size_t block_size);
 void linkfs_destroy_file(linkfs_file_t* file_ptr);
 
 // file vector
@@ -77,7 +76,7 @@ void linkfs_destroy_file_vector(linkfs_file_vector_t* file_vector_ptr);
 
 // fs
 
-linkfs* linkfs_create_instance(size_t block_size);
+linkfs* linkfs_create_instance();
 void linkfs_destroy_instance(linkfs* fs_ptr);
 
 // fs info
@@ -87,11 +86,11 @@ size_t linkfs_total_size(const linkfs* const fs_ptr);
 
 // file API
 
-size_t linkfs_read_file(linkfs_file_t* file_ptr, linkfs_memory_block_t* buffer, size_t length);
-size_t linkfs_write_file(linkfs_file_t* file_ptr, linkfs_memory_block_t* buffer, size_t length);
+size_t linkfs_read_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* const buffer);
+size_t linkfs_write_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* const buffer);
 void linkfs_reset_file_cursor(linkfs_file_t* file_ptr);
 linkfs_file_t* linkfs_open_file(linkfs* fs_ptr, const char* filename, char mode);
-int32_t linkfs_close_file(linkfs* fs_ptr, linkfs_file_t* file_ptr);
+int32_t linkfs_close_file(linkfs_file_t* file_ptr);
 uint32_t linkfs_remove_file(linkfs* fs_ptr, linkfs_file_t* file_ptr);
 int32_t linkfs_remove_file_str(linkfs* fs_ptr, const char* filename);
 linkfs_file_t* linkfs_find_file(linkfs* fs_ptr, const char* filename);
