@@ -1047,6 +1047,8 @@ void test_linkfs_randomized_file_rw(const float duration) {
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes);
 }
 
+void test_linkfs_randomized_dump_rw(const float duration) {
+}
 
 void test_linkfs() {
     test_linkfs_simple_rw();
