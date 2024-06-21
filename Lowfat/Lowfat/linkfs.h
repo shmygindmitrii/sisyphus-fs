@@ -25,16 +25,20 @@ typedef struct linkfs_cluster {
 } linkfs_cluster_t;
 
 typedef struct {
-    linkfs_string_t* filename;
     size_t block_size;
     size_t block_count;
     size_t size;
     uint32_t crc;
-    linkfs_cluster_t* start;
-    linkfs_cluster_t* current;
     size_t current_index;
     size_t current_byte;
     uint16_t flags;
+} linkfs_file_props_t;
+
+typedef struct {
+    linkfs_string_t* filename;
+    linkfs_cluster_t* start;
+    linkfs_cluster_t* current;
+    linkfs_file_props_t props;
 } linkfs_file_t;
 
 typedef struct {
@@ -65,6 +69,9 @@ void linkfs_destroy_cluster(linkfs_cluster_t* cluster_ptr);
 // file
 
 linkfs_file_t* linkfs_create_file(const char* filename, size_t block_size);
+size_t linkfs_file_binary_size(const linkfs_file_t* const file_ptr);
+linkfs_memory_block_t* linkfs_create_memory_block_from_file(const linkfs_file_t* const file_ptr);
+linkfs_file_t* linkfs_create_file_from_memory_block(const linkfs_memory_block_t* const block_ptr);
 void linkfs_destroy_file(linkfs_file_t* file_ptr);
 
 // file vector
@@ -97,6 +104,11 @@ int32_t linkfs_remove_file_str(linkfs* fs_ptr, const char* filename);
 linkfs_file_t* linkfs_find_file(linkfs* fs_ptr, const char* filename);
 // walk over all files if needed
 size_t linkfs_walk_over_all_files(const linkfs* const fs_ptr, void* arg, void(*procedure)(linkfs_file_t* file_ptr, void* data));
+
+// binary form
+
+linkfs_memory_block_t* linkfs_to_memory_block(const linkfs* const fs_ptr);
+linkfs* linkfs_from_memory_block(const linkfs_memory_block_t* const block_ptr);
 
 #ifdef __cplusplus
 }
