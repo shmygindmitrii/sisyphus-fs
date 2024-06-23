@@ -141,15 +141,18 @@ linkfs_file_t* linkfs_create_file_from_memory_block(const linkfs_memory_block_t*
         linkfs_file_t* file_ptr = linkfs_create_file(filename, props_ptr->block_size);
         size_t file_size = file_ptr->props.size;
         size_t block_offset = filename_length + 4;
+        file_ptr->start = linkfs_create_cluster(props_ptr->block_size);
+        file_ptr->current = file_ptr->start;
         while (file_size) {
             size_t block_size = file_size < props_ptr->block_size ? file_size : props_ptr->block_size;
-            linkfs_memory_block_t slice;
-            slice.size = block_size;
-            slice.data = block_ptr->data + block_offset;
-            linkfs_write_file(file_ptr, &slice);
+            memcpy(file_ptr->current->block->data, block_ptr->data + block_offset, block_size);
+            file_ptr->current->next = linkfs_create_cluster(props_ptr->block_size);
+            file_ptr->current = file_ptr->current->next;
             block_offset += block_size;
+            file_size -= block_size;
         }
         memcpy(&file_ptr->props, props_ptr, sizeof(linkfs_file_props_t));
+        linkfs_close_file(file_ptr);
         return file_ptr;
     }
     LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> block_ptr is NULL\n", __FILE__, __LINE__);
@@ -474,30 +477,23 @@ linkfs_memory_block_t* linkfs_to_memory_block(const linkfs* const fs_ptr) {
         size_t total_binary_size = 4; // file count
         for (size_t i = 0; i < fs_ptr->files->size; i++) {
             const linkfs_file_t* const file_ptr = fs_ptr->files->entries[i];
-            total_binary_size += 4 + file_ptr->filename->length + sizeof(linkfs_file_props_t);
-            total_binary_size += file_ptr->props.block_count * file_ptr->props.block_size;
+            total_binary_size += 4 + linkfs_file_binary_size(file_ptr);
         }
         linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(total_binary_size);
         *(uint32_t*)block_ptr->data = (uint32_t)fs_ptr->files->size;
         size_t block_offset = 4;
         for (size_t i = 0; i < fs_ptr->files->size; i++) {
             const linkfs_file_t* const file_ptr = fs_ptr->files->entries[i];
-            *(uint32_t*)(block_ptr->data + block_offset) = (uint32_t)fs_ptr->files->size;
-            block_offset += 4;
-            memcpy(block_ptr->data + block_offset, file_ptr->filename->content, file_ptr->filename->length);
-            block_offset += file_ptr->filename->length;
-            memcpy(block_ptr->data + block_offset, &file_ptr->props, sizeof(linkfs_file_props_t));
-            block_offset += sizeof(linkfs_file_props_t);
-            size_t file_size = file_ptr->props.size;
-            linkfs_cluster_t* cluster_ptr = file_ptr->start;
-            while (file_size) {
-                size_t can_be_written = file_size > file_ptr->props.block_size ? file_ptr->props.block_size : file_size;
-                memcpy(block_ptr->data + block_offset, cluster_ptr->block->data, can_be_written);
-                file_size -= can_be_written;
-                cluster_ptr = cluster_ptr->next;
-                block_offset += can_be_written;
+            const linkfs_memory_block_t* const file_block_ptr = linkfs_create_memory_block_from_file(file_ptr);
+            if (file_block_ptr) {
+                *(uint32_t*)(block_ptr->data + block_offset) = (uint32_t)file_block_ptr->size;
+                memcpy(block_ptr->data + block_offset, file_block_ptr->data, file_block_ptr->size);
+                block_offset += 4 + file_block_ptr->size;
+                linkfs_destroy_memory_block(block_ptr);
             }
-            LINKFS_ASSERT(cluster_ptr == NULL);
+            else {
+                LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> file_block_ptr is NULL\n", __FILE__, __LINE__);
+            }
         }
         LINKFS_ASSERT(block_offset == block_ptr->size);
         return block_ptr;
