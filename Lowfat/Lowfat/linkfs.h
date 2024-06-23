@@ -77,8 +77,10 @@ void linkfs_destroy_file(linkfs_file_t* file_ptr);
 // file vector
 
 linkfs_file_vector_t* linkfs_create_file_vector();
+void linkfs_file_vector_reserve(linkfs_file_vector_t* file_vector_ptr, const size_t new_capacity);
 linkfs_file_t* linkfs_file_vector_find(const linkfs_file_vector_t* const file_vector_ptr, const char* filename);
 linkfs_file_t* linkfs_file_vector_append_new(linkfs_file_vector_t* file_vector_ptr, const char* filename, size_t block_size);
+void linkfs_file_vector_append(linkfs_file_vector_t* file_vector_ptr, const linkfs_file_t* const file_ptr);
 void linkfs_destroy_file_vector(linkfs_file_vector_t* file_vector_ptr);
 
 // fs
