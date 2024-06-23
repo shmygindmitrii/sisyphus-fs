@@ -1047,9 +1047,33 @@ void test_linkfs_randomized_file_rw(const float duration) {
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes);
 }
 
+void test_linkfs_binary_dump(const char* path, const linkfs* const fs_ptr) {
+    assert(fs_ptr);
+    linkfs_memory_block_t* block_ptr = linkfs_to_memory_block(fs_ptr);
+    std::unique_ptr<FILE, decltype(&fclose)> dump_file(fopen(path, "wb"), &fclose); // "linkfs_test_bump.bin"
+    if (dump_file.get()) {
+        fwrite(block_ptr->data, block_ptr->size, 1, dump_file.get());
+    }
+    linkfs_destroy_memory_block(block_ptr);
+}
+
+linkfs* test_linkfs_binary_creation(const char* path) {
+    assert(path);
+    std::unique_ptr<FILE, decltype(&fclose)> dump_file(fopen(path, "rb"), &fclose); // "linkfs_test_bump.bin"
+    if (dump_file.get()) {
+        fseek(dump_file.get(), 0, SEEK_END);
+        const size_t file_size = ftell(dump_file.get());
+        fseek(dump_file.get(), 0, SEEK_SET);
+        linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(file_size);
+        fread(block_ptr->data, file_size, 1, dump_file.get());
+        linkfs* fs_ptr = linkfs_from_memory_block(block_ptr);
+        linkfs_destroy_memory_block(block_ptr);
+        return fs_ptr;
+    }
+    return nullptr;
+}
+
 void test_linkfs_randomized_dump_rw(const float duration) {
-    MAYBE_UNUSED(duration);
-#if 0
     const size_t min_file_block_size = 4; // 4 B
     const size_t min_file_size = min_file_block_size * 16; // 64 B
     const size_t max_file_block_size = 4096; // 4 KiB
@@ -1086,7 +1110,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             size_t written = linkfs_write_file(file_ptr, block_ptr);
             assert(written == block_ptr->size);
             linkfs_destroy_memory_block(block_ptr);
-            assert(crc == file_ptr->crc);
+            assert(crc == file_ptr->props.crc);
             min_random_file_block_size = min(min_random_file_block_size, cur_file_block_size);
             max_random_file_block_size = max(max_random_file_block_size, cur_file_block_size);
             min_random_file_size = min(min_random_file_size, cur_file_size);
@@ -1094,6 +1118,8 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             rewritten_memory += cur_file_size;
             file_idx++;
         }
+        // dump full fs and recreate
+        test_linkfs_
         size_t file_count_to_delete = rand_gen() % (linkfs_file_count(fs_ptr) - 1) + 1;
         size_t file_remains = linkfs_file_count(fs_ptr);
         for (size_t i = 0; i < file_count_to_delete; i++) {
@@ -1101,7 +1127,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             std::string filename = filenames[file_idx];
             uint32_t crc = crcs[file_idx];
             linkfs_file_t* file_ptr = linkfs_find_file(fs_ptr, filename.c_str());
-            assert(file_ptr->crc == crc);
+            assert(file_ptr->props.crc == crc);
             linkfs_remove_file(fs_ptr, file_ptr);
             if (file_idx != filenames.size() - 1) {
                 filenames[file_idx] = filenames.back();
@@ -1111,7 +1137,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             crcs.pop_back();
             file_remains--;
         }
-        //
+        // dump cleaned fs and recreate
         cycle_count++;
         end = std::chrono::steady_clock::now();
         elapsed = end - start;
@@ -1127,7 +1153,6 @@ void test_linkfs_randomized_dump_rw(const float duration) {
     assert(allocated_total == 0);
     printf("[ linkfs ] randomized dump rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", total rewritten memory is %zu MB, %zu KB, %zu bytes \n",
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes);
-#endif
 }
 
 void test_linkfs() {
