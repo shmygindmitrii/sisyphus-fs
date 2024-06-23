@@ -136,7 +136,7 @@ linkfs_memory_block_t* linkfs_create_memory_block_from_file(const linkfs_file_t*
 linkfs_file_t* linkfs_create_file_from_memory_block(const linkfs_memory_block_t* const block_ptr) {
     if (block_ptr) {
         uint32_t filename_length = *(uint32_t*)block_ptr->data;
-        const char* filename = block_ptr->data[4];
+        const char* filename = (const char*)(block_ptr->data + 4);
         const linkfs_file_props_t* props_ptr = (linkfs_file_props_t*)(block_ptr->data + filename_length + 4);
         linkfs_file_t* file_ptr = linkfs_create_file(filename, props_ptr->block_size);
         size_t file_size = file_ptr->props.size;
@@ -213,8 +213,11 @@ void linkfs_file_vector_reserve(linkfs_file_vector_t* file_vector_ptr, const siz
         }
         if (new_capacity) {
             linkfs_file_t** files = LINKFS_ALLOC(new_capacity * sizeof(linkfs_file_t*));
-            memcpy(files, file_vector_ptr->entries, new_capacity * sizeof(linkfs_file_t*));
-            LINKFS_FREE(file_vector_ptr->entries);
+            size_t copy_count = new_capacity < file_vector_ptr->capacity ? new_capacity : file_vector_ptr->capacity;
+            if (file_vector_ptr->entries) {
+                memcpy(files, file_vector_ptr->entries, copy_count * sizeof(linkfs_file_t*));
+                LINKFS_FREE(file_vector_ptr->entries);
+            }
             file_vector_ptr->entries = files;
         }
         else {
@@ -240,7 +243,7 @@ linkfs_file_t* linkfs_file_vector_find(const linkfs_file_vector_t* const file_ve
     return NULL;
 }
 
-void linkfs_file_vector_append(linkfs_file_vector_t* file_vector_ptr, const linkfs_file_t* const file_ptr) {
+void linkfs_file_vector_append(linkfs_file_vector_t* file_vector_ptr, linkfs_file_t* file_ptr) {
     if (file_vector_ptr) {
         LINKFS_ASSERT(file_ptr);
         if (file_vector_ptr->size == file_vector_ptr->capacity) {
@@ -535,13 +538,14 @@ linkfs* linkfs_from_memory_block(const linkfs_memory_block_t* const block_ptr) {
     if (block_ptr) {
         linkfs* fs_ptr = linkfs_create_instance();
         const size_t file_count = *(uint32_t*)block_ptr->data;
+        linkfs_file_vector_reserve(fs_ptr->files, file_count);
         size_t block_offset = 4;
         for (uint32_t i = 0; i < file_count; i++) {
             linkfs_memory_block_t block;
             block.size = (size_t)(*(uint32_t*)(block_ptr->data + block_offset));
             block_offset += 4;
             block.data = block_ptr->data + block_offset;
-            const linkfs_file_t* const file_ptr = linkfs_create_file_from_memory_block(&block);
+            linkfs_file_t* file_ptr = linkfs_create_file_from_memory_block(&block);
             linkfs_file_vector_append(fs_ptr->files, file_ptr);
             block_offset += block.size;
         }
