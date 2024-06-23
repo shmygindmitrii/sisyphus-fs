@@ -896,7 +896,7 @@ void test_linkfs_simple_rw() {
         size_t written = linkfs_write_file(file_ptr, block);
         assert(written == block->size);
         assert(linkfs_total_size(fs_ptr) == 4ULL);
-        assert(crc_test_3 == file_ptr->crc);
+        assert(crc_test_3 == file_ptr->props.crc);
         linkfs_remove_file_str(fs_ptr, filename);
         assert(linkfs_total_size(fs_ptr) == 0ULL);
         linkfs_destroy_memory_block(block);
@@ -909,7 +909,7 @@ void test_linkfs_simple_rw() {
         size_t written = linkfs_write_file(file_ptr, block);
         assert(written == block->size);
         assert(linkfs_total_size(fs_ptr) == 3072ULL);
-        assert(crc == file_ptr->crc);
+        assert(crc == file_ptr->props.crc);
         linkfs_remove_file_str(fs_ptr, filename);
         assert(linkfs_total_size(fs_ptr) == 0ULL);
         linkfs_destroy_memory_block(block);
@@ -944,7 +944,7 @@ void test_linkfs_randomized_single_file_rw(const float duration) {
         size_t written = linkfs_write_file(file_ptr, block_ptr);
         assert(written == block_ptr->size);
         linkfs_destroy_memory_block(block_ptr);
-        assert(crc == file_ptr->crc);
+        assert(crc == file_ptr->props.crc);
         linkfs_remove_file(fs_ptr, file_ptr);
         min_random_file_block_size = min(min_random_file_block_size, cur_file_block_size);
         max_random_file_block_size = max(max_random_file_block_size, cur_file_block_size);
@@ -968,6 +968,88 @@ void test_linkfs_randomized_single_file_rw(const float duration) {
 }
 
 void test_linkfs_randomized_file_rw(const float duration) {
+    const size_t min_file_block_size = 4; // 4 B
+    const size_t min_file_size = min_file_block_size * 16; // 64 B
+    const size_t max_file_block_size = 4096; // 4 KiB
+    const size_t max_file_size = max_file_block_size * 16; // 64 KiB
+    const size_t max_fs_size = 8 * 1024 * 1024; // 8 MiB
+    RandomUint32Generator rand_gen;
+    linkfs* fs_ptr = linkfs_create_instance();
+    size_t min_random_file_block_size = UINT64_MAX;
+    size_t max_random_file_block_size = 0;
+    size_t min_random_file_size = UINT64_MAX;
+    size_t max_random_file_size = 0;
+    size_t cycle_count = 0;
+    const auto start{ std::chrono::steady_clock::now() };
+    auto end{ std::chrono::steady_clock::now() };
+    std::chrono::duration<double> elapsed = end - start;
+    MemAmount_t rewritten_memory = {};
+    std::vector<std::string> filenames = {};
+    std::vector<uint32_t> crcs = {};
+    while (elapsed.count() < duration) {
+        while (true) {
+            const size_t fs_size = linkfs_total_size(fs_ptr);
+            static size_t file_idx = 0;
+            size_t cur_file_size = static_cast<size_t>(rand_gen()) % (max_file_size - min_file_size) + min_file_size;
+            if (fs_size + cur_file_size > max_fs_size) {
+                break;
+            }
+            size_t cur_file_block_size = static_cast<size_t>(rand_gen()) % (max_file_block_size - min_file_block_size) + min_file_block_size;
+            std::string filename = "test_" + std::to_string(file_idx) + ".bin";
+            filenames.emplace_back(filename);
+            linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename.c_str(), cur_file_block_size);
+            linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(cur_file_size);
+            uint32_t crc = fill_random_memory_block_and_calc_crc32(block_ptr);
+            crcs.emplace_back(crc);
+            size_t written = linkfs_write_file(file_ptr, block_ptr);
+            assert(written == block_ptr->size);
+            linkfs_destroy_memory_block(block_ptr);
+            assert(crc == file_ptr->props.crc);
+            min_random_file_block_size = min(min_random_file_block_size, cur_file_block_size);
+            max_random_file_block_size = max(max_random_file_block_size, cur_file_block_size);
+            min_random_file_size = min(min_random_file_size, cur_file_size);
+            max_random_file_size = max(max_random_file_size, cur_file_size);
+            rewritten_memory += cur_file_size;
+            file_idx++;
+        }
+        size_t file_count_to_delete = rand_gen() % (linkfs_file_count(fs_ptr) - 1) + 1;
+        size_t file_remains = linkfs_file_count(fs_ptr);
+        for (size_t i = 0; i < file_count_to_delete; i++) {
+            size_t file_idx = rand_gen() % file_remains;
+            std::string filename = filenames[file_idx];
+            uint32_t crc = crcs[file_idx];
+            linkfs_file_t* file_ptr = linkfs_find_file(fs_ptr, filename.c_str());
+            assert(file_ptr->props.crc == crc);
+            linkfs_remove_file(fs_ptr, file_ptr);
+            if (file_idx != filenames.size() - 1) {
+                filenames[file_idx] = filenames.back();
+                crcs[file_idx] = crcs.back();
+            }
+            filenames.pop_back();
+            crcs.pop_back();
+            file_remains--;
+        }
+        //
+        cycle_count++;
+        end = std::chrono::steady_clock::now();
+        elapsed = end - start;
+        static auto prev_passed = elapsed.count();
+        const auto cur_passed = elapsed.count();
+        if (cur_passed - prev_passed > 1.0f) {
+            printf("[ linkfs ] test_linkfs_randomized_file_rw: finished %.1f%% \n", cur_passed / duration * 100.0f);
+            prev_passed = cur_passed;
+        }
+    }
+    linkfs_destroy_instance(fs_ptr);
+    assert(allocated_table.empty());
+    assert(allocated_total == 0);
+    printf("[ linkfs ] randomized file rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", total rewritten memory is %zu MB, %zu KB, %zu bytes \n",
+        cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes);
+}
+
+void test_linkfs_randomized_dump_rw(const float duration) {
+    MAYBE_UNUSED(duration);
+#if 0
     const size_t min_file_block_size = 4; // 4 B
     const size_t min_file_size = min_file_block_size * 16; // 64 B
     const size_t max_file_block_size = 4096; // 4 KiB
@@ -1043,11 +1125,9 @@ void test_linkfs_randomized_file_rw(const float duration) {
     linkfs_destroy_instance(fs_ptr);
     assert(allocated_table.empty());
     assert(allocated_total == 0);
-    printf("[ linkfs ] randomized file rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", total rewritten memory is %zu MB, %zu KB, %zu bytes \n",
+    printf("[ linkfs ] randomized dump rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", total rewritten memory is %zu MB, %zu KB, %zu bytes \n",
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes);
-}
-
-void test_linkfs_randomized_dump_rw(const float duration) {
+#endif
 }
 
 void test_linkfs() {
