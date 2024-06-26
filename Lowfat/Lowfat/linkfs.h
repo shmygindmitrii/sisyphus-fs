@@ -72,6 +72,7 @@ linkfs_file_t* linkfs_create_file(const char* filename, size_t block_size);
 size_t linkfs_file_binary_size(const linkfs_file_t* const file_ptr);
 linkfs_memory_block_t* linkfs_create_memory_block_from_file(const linkfs_file_t* const file_ptr);
 linkfs_file_t* linkfs_create_file_from_memory_block(const linkfs_memory_block_t* const block_ptr);
+uint32_t linkfs_calculate_crc(const linkfs_file_t* const file_ptr);
 void linkfs_destroy_file(linkfs_file_t* file_ptr);
 
 // file vector
@@ -103,7 +104,7 @@ linkfs_file_t* linkfs_open_file(linkfs* fs_ptr, const char* filename, char mode)
 int32_t linkfs_close_file(linkfs_file_t* file_ptr);
 uint32_t linkfs_remove_file(linkfs* fs_ptr, linkfs_file_t* file_ptr);
 int32_t linkfs_remove_file_str(linkfs* fs_ptr, const char* filename);
-linkfs_file_t* linkfs_find_file(linkfs* fs_ptr, const char* filename);
+linkfs_file_t* linkfs_find_file(const linkfs* const fs_ptr, const char* filename);
 // walk over all files if needed
 size_t linkfs_walk_over_all_files(const linkfs* const fs_ptr, void* arg, void(*procedure)(linkfs_file_t* file_ptr, void* data));
 

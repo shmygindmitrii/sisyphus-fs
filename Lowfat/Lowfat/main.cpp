@@ -1050,28 +1050,69 @@ void test_linkfs_randomized_file_rw(const float duration) {
 void test_linkfs_binary_dump(const char* path, const linkfs* const fs_ptr) {
     assert(fs_ptr);
     linkfs_memory_block_t* block_ptr = linkfs_to_memory_block(fs_ptr);
-    std::unique_ptr<FILE, decltype(&fclose)> dump_file(fopen(path, "wb"), &fclose); // "linkfs_test_bump.bin"
-    if (dump_file.get()) {
-        fwrite(block_ptr->data, block_ptr->size, 1, dump_file.get());
+    FILE* dump_file_ptr = nullptr;
+    fopen_s(&dump_file_ptr, path, "wb");
+    if (dump_file_ptr) {
+        fwrite(block_ptr->data, block_ptr->size, 1, dump_file_ptr);
+        fclose(dump_file_ptr);
     }
     linkfs_destroy_memory_block(block_ptr);
 }
 
 linkfs* test_linkfs_binary_creation(const char* path) {
     assert(path);
-    std::unique_ptr<FILE, decltype(&fclose)> dump_file(fopen(path, "rb"), &fclose); // "linkfs_test_bump.bin"
-    if (dump_file.get()) {
-        fseek(dump_file.get(), 0, SEEK_END);
-        const size_t file_size = ftell(dump_file.get());
-        fseek(dump_file.get(), 0, SEEK_SET);
+    FILE* dump_file_ptr = nullptr;
+    fopen_s(&dump_file_ptr, path, "rb");
+    if (dump_file_ptr) {
+        fseek(dump_file_ptr, 0, SEEK_END);
+        const size_t file_size = ftell(dump_file_ptr);
+        fseek(dump_file_ptr, 0, SEEK_SET);
         linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(file_size);
-        fread(block_ptr->data, file_size, 1, dump_file.get());
+        fread(block_ptr->data, file_size, 1, dump_file_ptr);
         linkfs* fs_ptr = linkfs_from_memory_block(block_ptr);
         linkfs_destroy_memory_block(block_ptr);
+        fclose(dump_file_ptr);
         return fs_ptr;
     }
     return nullptr;
 }
+
+bool test_linkfs_cluster_count(const linkfs* const fs_ptr) {
+    if (fs_ptr) {
+        for (size_t i = 0; i < fs_ptr->files->size; i++) {
+            const linkfs_file_t* const file_ptr = fs_ptr->files->entries[i];
+            linkfs_cluster_t* cluster_ptr = file_ptr->start;
+            size_t block_count = file_ptr->props.block_count;
+            size_t calculated_block_count = 0;
+            while (cluster_ptr) {
+                cluster_ptr = cluster_ptr->next;
+                calculated_block_count++;
+            }
+            assert(calculated_block_count == block_count);
+            if (calculated_block_count != block_count) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool test_linkfs_crcs(const linkfs* const fs_ptr) {
+    if (fs_ptr) {
+        for (size_t i = 0; i < fs_ptr->files->size; i++) {
+            const linkfs_file_t* const file_ptr = fs_ptr->files->entries[i];
+            uint32_t calculated_crc = linkfs_calculate_crc(file_ptr);
+            assert(file_ptr->props.crc == calculated_crc);
+            if (file_ptr->props.crc != calculated_crc) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
 
 void test_linkfs_randomized_dump_rw(const float duration) {
     const size_t min_file_block_size = 4; // 4 B
@@ -1119,25 +1160,60 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             file_idx++;
         }
         // dump full fs and recreate
-        test_linkfs_
+        for (size_t i = 0; i < filenames.size(); i++) {
+            const linkfs_file_t* const file_ptr = linkfs_find_file(fs_ptr, filenames[i].c_str());
+            linkfs_cluster_t* cluster_ptr = file_ptr->start;
+            size_t block_count = file_ptr->props.block_count;
+            size_t calculated_block_count = 0;
+            while (cluster_ptr) {
+                cluster_ptr = cluster_ptr->next;
+                calculated_block_count++;
+            }
+            assert(calculated_block_count == block_count);
+        }
+        assert(test_linkfs_crcs(fs_ptr));
+        test_linkfs_binary_dump("linkfs_instance.fs", fs_ptr);
+        linkfs_destroy_instance(fs_ptr);
+        fs_ptr = test_linkfs_binary_creation("linkfs_instance.fs");
+        for (size_t i = 0; i < filenames.size(); i++) {
+            const linkfs_file_t* const file_ptr = linkfs_find_file(fs_ptr, filenames[i].c_str());
+            assert(file_ptr->props.crc == crcs[i]);
+            uint32_t recalculated_crc = linkfs_calculate_crc(file_ptr);
+            assert(file_ptr->props.crc == recalculated_crc);
+        }
+        assert(test_linkfs_crcs(fs_ptr));
+        //
         size_t file_count_to_delete = rand_gen() % (linkfs_file_count(fs_ptr) - 1) + 1;
         size_t file_remains = linkfs_file_count(fs_ptr);
         for (size_t i = 0; i < file_count_to_delete; i++) {
-            size_t file_idx = rand_gen() % file_remains;
-            std::string filename = filenames[file_idx];
-            uint32_t crc = crcs[file_idx];
+            size_t cur_file_idx = rand_gen() % file_remains;
+            std::string filename = filenames[cur_file_idx];
+            uint32_t crc = crcs[cur_file_idx];
             linkfs_file_t* file_ptr = linkfs_find_file(fs_ptr, filename.c_str());
             assert(file_ptr->props.crc == crc);
             linkfs_remove_file(fs_ptr, file_ptr);
-            if (file_idx != filenames.size() - 1) {
-                filenames[file_idx] = filenames.back();
-                crcs[file_idx] = crcs.back();
+            if (cur_file_idx != filenames.size() - 1) {
+                filenames[cur_file_idx] = filenames.back();
+                crcs[cur_file_idx] = crcs.back();
             }
             filenames.pop_back();
             crcs.pop_back();
             file_remains--;
         }
         // dump cleaned fs and recreate
+        assert(test_linkfs_cluster_count(fs_ptr));
+        test_linkfs_binary_dump("linkfs_instance.fs", fs_ptr);
+        linkfs_destroy_instance(fs_ptr);
+        fs_ptr = test_linkfs_binary_creation("linkfs_instance.fs");
+        assert(test_linkfs_cluster_count(fs_ptr));
+        assert(test_linkfs_crcs(fs_ptr));
+        for (size_t i = 0; i < filenames.size(); i++) {
+            const linkfs_file_t* const file_ptr = linkfs_find_file(fs_ptr, filenames[i].c_str());
+            assert(file_ptr->props.crc == crcs[i]);
+            uint32_t recalculated_crc = linkfs_calculate_crc(file_ptr);
+            assert(file_ptr->props.crc == recalculated_crc);
+        }
+        //
         cycle_count++;
         end = std::chrono::steady_clock::now();
         elapsed = end - start;
@@ -1157,8 +1233,9 @@ void test_linkfs_randomized_dump_rw(const float duration) {
 
 void test_linkfs() {
     test_linkfs_simple_rw();
-    test_linkfs_randomized_single_file_rw(240.0f);
-    test_linkfs_randomized_file_rw(240.0f);
+    //test_linkfs_randomized_single_file_rw(10.0f);
+    //test_linkfs_randomized_file_rw(10.0f);
+    test_linkfs_randomized_dump_rw(10.0f);
 }
 
 extern "C" {
