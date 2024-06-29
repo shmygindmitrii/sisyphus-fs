@@ -880,22 +880,22 @@ Result<write_info_t, null_pointer_t> write_to_linkfs_instance_random_file(linkfs
         write_info_t wrinfo = {};
         size_t file_size = static_cast<size_t>(max(16, rand_gen())) % file_max_size;
         size_t block_size = static_cast<size_t>(max(16, rand_gen())) % file_block_max_size;
-        linkfs_memory_block_t* file_content = linkfs_create_memory_block(file_size);
+        linkfs_memory_block_t* file_content = linkfs_create_memory_block(file_size, LINKFS_MALLOC_TAG);
         wrinfo.crc = fill_random_memory_block_and_calc_crc32(file_content);
         wrinfo.filesize = static_cast<uint32_t>(file_size);
         wrinfo.fname = "test_file_" + std::to_string(s_call_idx) + ".bin";
         s_call_idx++;
-        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, wrinfo.fname.c_str(), block_size);
-        size_t bytes_written = linkfs_write_file(file_ptr, file_content);
+        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, wrinfo.fname.c_str(), block_size, LINKFS_MALLOC_TAG);
+        size_t bytes_written = linkfs_write_file(file_ptr, file_content, LINKFS_MALLOC_TAG);
         assert(bytes_written == file_content->size);
-        linkfs_destroy_memory_block(file_content);
+        linkfs_destroy_memory_block(file_content, LINKFS_FREE_TAG);
         return Result<write_info_t, null_pointer_t>(wrinfo);
     }
     return Result<write_info_t, null_pointer_t>(null_pointer);
 }
 
 void test_linkfs_simple_rw() {
-    linkfs* fs_ptr = linkfs_create_instance();
+    linkfs* fs_ptr = linkfs_create_instance(LINKFS_MALLOC_TAG);
     // revisit crc calculations
     const char test_abc[] = "ABC";
     uint32_t crc_test_0 = crc32_ccit_update(reinterpret_cast<const uint8_t*>(test_abc),     3, CRC32_CCIT_DEFAULT_VALUE); // start from filled to do not shift initial crc zeros
@@ -905,31 +905,31 @@ void test_linkfs_simple_rw() {
     assert(crc_test_3 == crc_test_0);
     {
         const char* filename = "test0.bin";
-        linkfs_memory_block_t* block = linkfs_create_memory_block(3);
+        linkfs_memory_block_t* block = linkfs_create_memory_block(3, LINKFS_MALLOC_TAG);
         memcpy(block->data, test_abc, 3);
-        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename, 2);
-        size_t written = linkfs_write_file(file_ptr, block);
+        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename, 2, LINKFS_MALLOC_TAG);
+        size_t written = linkfs_write_file(file_ptr, block, LINKFS_MALLOC_TAG);
         assert(written == block->size);
         assert(linkfs_total_size(fs_ptr) == 4ULL);
         assert(crc_test_3 == file_ptr->props.crc);
-        linkfs_remove_file_str(fs_ptr, filename);
+        linkfs_remove_file_str(fs_ptr, filename, LINKFS_FREE_TAG);
         assert(linkfs_total_size(fs_ptr) == 0ULL);
-        linkfs_destroy_memory_block(block);
+        linkfs_destroy_memory_block(block, LINKFS_FREE_TAG);
     }
     {
         const char* filename = "test1.bin";
-        linkfs_memory_block_t* block = linkfs_create_memory_block(2049);
+        linkfs_memory_block_t* block = linkfs_create_memory_block(2049, LINKFS_MALLOC_TAG);
         uint32_t crc = fill_random_memory_block_and_calc_crc32(block);
-        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename, 1024);
-        size_t written = linkfs_write_file(file_ptr, block);
+        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename, 1024, LINKFS_MALLOC_TAG);
+        size_t written = linkfs_write_file(file_ptr, block, LINKFS_MALLOC_TAG);
         assert(written == block->size);
         assert(linkfs_total_size(fs_ptr) == 3072ULL);
         assert(crc == file_ptr->props.crc);
-        linkfs_remove_file_str(fs_ptr, filename);
+        linkfs_remove_file_str(fs_ptr, filename, LINKFS_FREE_TAG);
         assert(linkfs_total_size(fs_ptr) == 0ULL);
-        linkfs_destroy_memory_block(block);
+        linkfs_destroy_memory_block(block, LINKFS_FREE_TAG);
     }
-    linkfs_destroy_instance(fs_ptr);
+    linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
     assert(allocated_table.empty());
     assert(allocated_total == 0);
 }
@@ -941,7 +941,7 @@ void test_linkfs_randomized_single_file_rw(const float duration) {
     const size_t max_file_block_size = 4096; // 4 KiB
     const size_t max_file_size = max_file_block_size * 16; // 64 KiB
     RandomUint32Generator rand_gen;
-    linkfs* fs_ptr = linkfs_create_instance();
+    linkfs* fs_ptr = linkfs_create_instance(LINKFS_MALLOC_TAG);
     size_t min_random_file_block_size = UINT64_MAX;
     size_t max_random_file_block_size = 0;
     size_t min_random_file_size = UINT64_MAX;
@@ -953,14 +953,14 @@ void test_linkfs_randomized_single_file_rw(const float duration) {
     while (elapsed.count() < duration) {
         size_t cur_file_block_size = static_cast<size_t>(rand_gen()) % (max_file_block_size - min_file_block_size) + min_file_block_size;
         size_t cur_file_size = static_cast<size_t>(rand_gen()) % (max_file_size - min_file_size) + min_file_size;
-        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, "test_0.bin", cur_file_block_size);
-        linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(cur_file_size);
+        linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, "test_0.bin", cur_file_block_size, LINKFS_MALLOC_TAG);
+        linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(cur_file_size, LINKFS_MALLOC_TAG);
         uint32_t crc = fill_random_memory_block_and_calc_crc32(block_ptr);
-        size_t written = linkfs_write_file(file_ptr, block_ptr);
+        size_t written = linkfs_write_file(file_ptr, block_ptr, LINKFS_MALLOC_TAG);
         assert(written == block_ptr->size);
-        linkfs_destroy_memory_block(block_ptr);
+        linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
         assert(crc == file_ptr->props.crc);
-        linkfs_remove_file(fs_ptr, file_ptr);
+        linkfs_remove_file(fs_ptr, file_ptr, LINKFS_FREE_TAG);
         min_random_file_block_size = min(min_random_file_block_size, cur_file_block_size);
         max_random_file_block_size = max(max_random_file_block_size, cur_file_block_size);
         min_random_file_size = min(min_random_file_size, cur_file_size);
@@ -975,7 +975,7 @@ void test_linkfs_randomized_single_file_rw(const float duration) {
             prev_passed = cur_passed;
         }
     }
-    linkfs_destroy_instance(fs_ptr);
+    linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
     assert(allocated_table.empty());
     assert(allocated_total == 0);
     printf("[ linkfs ] randomized single file rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 "\n",
@@ -989,7 +989,7 @@ void test_linkfs_randomized_file_rw(const float duration) {
     const size_t max_file_size = max_file_block_size * 16; // 64 KiB
     const size_t max_fs_size = 8 * 1024 * 1024; // 8 MiB
     RandomUint32Generator rand_gen;
-    linkfs* fs_ptr = linkfs_create_instance();
+    linkfs* fs_ptr = linkfs_create_instance(LINKFS_MALLOC_TAG);
     size_t min_random_file_block_size = UINT64_MAX;
     size_t max_random_file_block_size = 0;
     size_t min_random_file_size = UINT64_MAX;
@@ -1012,13 +1012,13 @@ void test_linkfs_randomized_file_rw(const float duration) {
             size_t cur_file_block_size = static_cast<size_t>(rand_gen()) % (max_file_block_size - min_file_block_size) + min_file_block_size;
             std::string filename = "test_" + std::to_string(file_idx) + ".bin";
             filenames.emplace_back(filename);
-            linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename.c_str(), cur_file_block_size);
-            linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(cur_file_size);
+            linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename.c_str(), cur_file_block_size, LINKFS_MALLOC_TAG);
+            linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(cur_file_size, LINKFS_MALLOC_TAG);
             uint32_t crc = fill_random_memory_block_and_calc_crc32(block_ptr);
             crcs.emplace_back(crc);
-            size_t written = linkfs_write_file(file_ptr, block_ptr);
+            size_t written = linkfs_write_file(file_ptr, block_ptr, LINKFS_MALLOC_TAG);
             assert(written == block_ptr->size);
-            linkfs_destroy_memory_block(block_ptr);
+            linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
             assert(crc == file_ptr->props.crc);
             min_random_file_block_size = min(min_random_file_block_size, cur_file_block_size);
             max_random_file_block_size = max(max_random_file_block_size, cur_file_block_size);
@@ -1035,7 +1035,7 @@ void test_linkfs_randomized_file_rw(const float duration) {
             uint32_t crc = crcs[file_idx];
             linkfs_file_t* file_ptr = linkfs_find_file(fs_ptr, filename.c_str());
             assert(file_ptr->props.crc == crc);
-            linkfs_remove_file(fs_ptr, file_ptr);
+            linkfs_remove_file(fs_ptr, file_ptr, LINKFS_FREE_TAG);
             if (file_idx != filenames.size() - 1) {
                 filenames[file_idx] = filenames.back();
                 crcs[file_idx] = crcs.back();
@@ -1055,7 +1055,7 @@ void test_linkfs_randomized_file_rw(const float duration) {
             prev_passed = cur_passed;
         }
     }
-    linkfs_destroy_instance(fs_ptr);
+    linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
     assert(allocated_table.empty());
     assert(allocated_total == 0);
     printf("[ linkfs ] randomized file rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", total rewritten memory is %zu MB, %zu KB, %zu bytes \n",
@@ -1064,14 +1064,14 @@ void test_linkfs_randomized_file_rw(const float duration) {
 
 void test_linkfs_binary_dump(const char* path, const linkfs* const fs_ptr) {
     assert(fs_ptr);
-    linkfs_memory_block_t* block_ptr = linkfs_to_memory_block(fs_ptr);
+    linkfs_memory_block_t* block_ptr = linkfs_to_memory_block(fs_ptr, LINKFS_MALLOC_TAG);
     FILE* dump_file_ptr = nullptr;
     fopen_s(&dump_file_ptr, path, "wb");
     if (dump_file_ptr) {
         fwrite(block_ptr->data, block_ptr->size, 1, dump_file_ptr);
         fclose(dump_file_ptr);
     }
-    linkfs_destroy_memory_block(block_ptr);
+    linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
 }
 
 linkfs* test_linkfs_binary_creation(const char* path) {
@@ -1082,10 +1082,10 @@ linkfs* test_linkfs_binary_creation(const char* path) {
         fseek(dump_file_ptr, 0, SEEK_END);
         const size_t file_size = ftell(dump_file_ptr);
         fseek(dump_file_ptr, 0, SEEK_SET);
-        linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(file_size);
+        linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(file_size, LINKFS_MALLOC_TAG);
         fread(block_ptr->data, file_size, 1, dump_file_ptr);
-        linkfs* fs_ptr = linkfs_from_memory_block(block_ptr);
-        linkfs_destroy_memory_block(block_ptr);
+        linkfs* fs_ptr = linkfs_from_memory_block(block_ptr, LINKFS_MALLOC_TAG);
+        linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
         fclose(dump_file_ptr);
         return fs_ptr;
     }
@@ -1136,7 +1136,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
     const size_t max_file_size = max_file_block_size * 16; // 64 KiB
     const size_t max_fs_size = 8 * 1024 * 1024; // 8 MiB
     RandomUint32Generator rand_gen;
-    linkfs* fs_ptr = linkfs_create_instance();
+    linkfs* fs_ptr = linkfs_create_instance(LINKFS_MALLOC_TAG);
     size_t min_random_file_block_size = UINT64_MAX;
     size_t max_random_file_block_size = 0;
     size_t min_random_file_size = UINT64_MAX;
@@ -1159,13 +1159,13 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             size_t cur_file_block_size = static_cast<size_t>(rand_gen()) % (max_file_block_size - min_file_block_size) + min_file_block_size;
             std::string filename = "test_" + std::to_string(file_idx) + ".bin";
             filenames.emplace_back(filename);
-            linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename.c_str(), cur_file_block_size);
-            linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(cur_file_size);
+            linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, filename.c_str(), cur_file_block_size, LINKFS_MALLOC_TAG);
+            linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(cur_file_size, LINKFS_MALLOC_TAG);
             uint32_t crc = fill_random_memory_block_and_calc_crc32(block_ptr);
             crcs.emplace_back(crc);
-            size_t written = linkfs_write_file(file_ptr, block_ptr);
+            size_t written = linkfs_write_file(file_ptr, block_ptr, LINKFS_MALLOC_TAG);
             assert(written == block_ptr->size);
-            linkfs_destroy_memory_block(block_ptr);
+            linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
             assert(crc == file_ptr->props.crc);
             min_random_file_block_size = min(min_random_file_block_size, cur_file_block_size);
             max_random_file_block_size = max(max_random_file_block_size, cur_file_block_size);
@@ -1188,7 +1188,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
         }
         assert(test_linkfs_crcs(fs_ptr));
         test_linkfs_binary_dump("linkfs_instance.fs", fs_ptr);
-        linkfs_destroy_instance(fs_ptr);
+        linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
         fs_ptr = test_linkfs_binary_creation("linkfs_instance.fs");
         for (size_t i = 0; i < filenames.size(); i++) {
             const linkfs_file_t* const file_ptr = linkfs_find_file(fs_ptr, filenames[i].c_str());
@@ -1206,7 +1206,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             uint32_t crc = crcs[cur_file_idx];
             linkfs_file_t* file_ptr = linkfs_find_file(fs_ptr, filename.c_str());
             assert(file_ptr->props.crc == crc);
-            linkfs_remove_file(fs_ptr, file_ptr);
+            linkfs_remove_file(fs_ptr, file_ptr, LINKFS_FREE_TAG);
             if (cur_file_idx != filenames.size() - 1) {
                 filenames[cur_file_idx] = filenames.back();
                 crcs[cur_file_idx] = crcs.back();
@@ -1218,7 +1218,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
         // dump cleaned fs and recreate
         assert(test_linkfs_cluster_count(fs_ptr));
         test_linkfs_binary_dump("linkfs_instance.fs", fs_ptr);
-        linkfs_destroy_instance(fs_ptr);
+        linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
         fs_ptr = test_linkfs_binary_creation("linkfs_instance.fs");
         assert(test_linkfs_cluster_count(fs_ptr));
         assert(test_linkfs_crcs(fs_ptr));
@@ -1239,7 +1239,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             prev_passed = cur_passed;
         }
     }
-    linkfs_destroy_instance(fs_ptr);
+    linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
     assert(allocated_table.empty());
     assert(allocated_total == 0);
     printf("[ linkfs ] randomized dump rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", total rewritten memory is %zu MB, %zu KB, %zu bytes \n",
@@ -1247,22 +1247,22 @@ void test_linkfs_randomized_dump_rw(const float duration) {
 }
 
 void test_linkfs_dump_rw(){
-    linkfs* fs_ptr = linkfs_create_instance();
-    linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, "test.bin", 8);
-    linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(4);
+    linkfs* fs_ptr = linkfs_create_instance(LINKFS_MALLOC_TAG);
+    linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, "test.bin", 8, LINKFS_MALLOC_TAG);
+    linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(4, LINKFS_MALLOC_TAG);
     uint32_t crc = fill_ordered_memory_block_and_calc_crc32(block_ptr);
-    size_t file_size = linkfs_write_file(file_ptr, block_ptr);
+    size_t file_size = linkfs_write_file(file_ptr, block_ptr, LINKFS_MALLOC_TAG);
     assert(file_size == block_ptr->size);
     assert(file_ptr->props.crc == crc);
     linkfs_close_file(file_ptr);
     test_linkfs_binary_dump("linkfs_dump.bin", fs_ptr);
-    linkfs_destroy_instance(fs_ptr);
+    linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
     assert(allocated_total == block_ptr->size + sizeof(linkfs_memory_block_t));
     //
     fs_ptr = test_linkfs_binary_creation("linkfs_dump.bin");
-    file_ptr = linkfs_open_file(fs_ptr, "test.bin", 'r');
+    file_ptr = linkfs_open_file(fs_ptr, "test.bin", 'r', LINKFS_MALLOC_TAG);
     uint32_t rcrc = linkfs_calculate_crc(file_ptr);
-    linkfs_memory_block_t* dumped_block_ptr = linkfs_create_memory_block(file_size);
+    linkfs_memory_block_t* dumped_block_ptr = linkfs_create_memory_block(file_size, LINKFS_MALLOC_TAG);
     size_t length_read = linkfs_read_file(file_ptr, dumped_block_ptr);
     assert(length_read == file_size);
     for (size_t i = 0; i < file_size; i++) {
@@ -1271,9 +1271,9 @@ void test_linkfs_dump_rw(){
     assert(file_size == file_ptr->props.size);
     assert(rcrc == crc);
     //
-    linkfs_destroy_memory_block(dumped_block_ptr);
-    linkfs_destroy_memory_block(block_ptr);
-    linkfs_destroy_instance(fs_ptr);
+    linkfs_destroy_memory_block(dumped_block_ptr, LINKFS_FREE_TAG);
+    linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
+    linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
     assert(allocated_table.empty());
     assert(allocated_total == 0);
 }
