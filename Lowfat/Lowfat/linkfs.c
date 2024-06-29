@@ -378,7 +378,9 @@ size_t linkfs_total_size(const linkfs* const fs_ptr) {
 
 linkfs_file_t* linkfs_open_new_file(linkfs* fs_ptr, const char* filename, size_t block_size) {
     if (fs_ptr) {
-        return linkfs_file_vector_append_new(fs_ptr->files, filename, block_size);
+        linkfs_file_t* file_ptr = linkfs_file_vector_append_new(fs_ptr->files, filename, block_size);
+        file_ptr->props.flags |= LINKFS_FILE_LOCKED;
+        return file_ptr;
     }
     LINKFS_DEBUGBREAK(LINKFS_PRINT_ERROR "%s(%d) -> fs_ptr is NULL\n", __FILE__, __LINE__);
     return NULL;
@@ -452,9 +454,9 @@ size_t linkfs_write_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* c
             size_t remains_in_block = file_ptr->props.block_size - file_ptr->props.current_byte;
             size_t bytes_can_be_written = write_bytes > remains_in_block ? remains_in_block : write_bytes;
             if (bytes_can_be_written > 0) {
-            memcpy(file_ptr->current->block->data + file_ptr->props.current_byte, buffer->data + buffer_offset, bytes_can_be_written);
-            write_bytes -= bytes_can_be_written;
-            file_ptr->props.crc = crc32_ccit_update(buffer->data + buffer_offset, bytes_can_be_written, file_ptr->props.crc ^ 0xFFFFFFFF);
+                memcpy(file_ptr->current->block->data + file_ptr->props.current_byte, buffer->data + buffer_offset, bytes_can_be_written);
+                write_bytes -= bytes_can_be_written;
+                file_ptr->props.crc = crc32_ccit_update(buffer->data + buffer_offset, bytes_can_be_written, file_ptr->props.crc ^ 0xFFFFFFFF);
                 file_ptr->props.size += bytes_can_be_written;
                 file_ptr->props.current_byte += bytes_can_be_written;
             }
