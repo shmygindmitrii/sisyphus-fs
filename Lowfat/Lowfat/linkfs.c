@@ -142,8 +142,6 @@ linkfs_file_t* linkfs_create_file_from_memory_block(const linkfs_memory_block_t*
         linkfs_file_t* file_ptr = linkfs_create_file(filename, props_ptr->block_size, malloc_tag);
         size_t file_size = props_ptr->size;
         size_t block_offset = filename_length + 4 + sizeof(linkfs_file_props_t);
-        file_ptr->start = linkfs_create_cluster(props_ptr->block_size);
-        file_ptr->current = file_ptr->start;
         uint32_t crc = 0;
         while (file_size) {
             size_t block_size = file_size < props_ptr->block_size ? file_size : props_ptr->block_size;
