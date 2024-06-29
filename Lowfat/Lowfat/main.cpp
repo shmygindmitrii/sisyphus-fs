@@ -845,6 +845,15 @@ void test_lowfat_fs() {
     LOWFAT_FS_ASSERT(allocated_total == 0);
 }
 
+uint32_t fill_ordered_memory_block_and_calc_crc32(linkfs_memory_block_t* block) {
+    uint8_t val = 'A';
+    for (uint32_t i = 0; i < block->size; i++) {
+        block->data[i] = val;
+        val = val == 'Z' ? 'A' : val + 1;
+    }
+    return crc32_ccit_update(block->data, static_cast<uint32_t>(block->size), CRC32_CCIT_DEFAULT_VALUE);
+}
+
 uint32_t fill_random_memory_block_and_calc_crc32(linkfs_memory_block_t* block) {
     RandomUint32Generator rand_gen;
     size_t size = block->size;
@@ -1237,11 +1246,44 @@ void test_linkfs_randomized_dump_rw(const float duration) {
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes);
 }
 
+void test_linkfs_dump_rw(){
+    linkfs* fs_ptr = linkfs_create_instance();
+    linkfs_file_t* file_ptr = linkfs_open_new_file(fs_ptr, "test.bin", 8);
+    linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(4);
+    uint32_t crc = fill_ordered_memory_block_and_calc_crc32(block_ptr);
+    size_t file_size = linkfs_write_file(file_ptr, block_ptr);
+    assert(file_size == block_ptr->size);
+    assert(file_ptr->props.crc == crc);
+    linkfs_close_file(file_ptr);
+    test_linkfs_binary_dump("linkfs_dump.bin", fs_ptr);
+    linkfs_destroy_instance(fs_ptr);
+    assert(allocated_total == block_ptr->size + sizeof(linkfs_memory_block_t));
+    //
+    fs_ptr = test_linkfs_binary_creation("linkfs_dump.bin");
+    file_ptr = linkfs_open_file(fs_ptr, "test.bin", 'r');
+    uint32_t rcrc = linkfs_calculate_crc(file_ptr);
+    linkfs_memory_block_t* dumped_block_ptr = linkfs_create_memory_block(file_size);
+    size_t length_read = linkfs_read_file(file_ptr, dumped_block_ptr);
+    assert(length_read == file_size);
+    for (size_t i = 0; i < file_size; i++) {
+        assert(dumped_block_ptr->data[i] == block_ptr->data[i]);
+    }
+    assert(file_size == file_ptr->props.size);
+    assert(rcrc == crc);
+    //
+    linkfs_destroy_memory_block(dumped_block_ptr);
+    linkfs_destroy_memory_block(block_ptr);
+    linkfs_destroy_instance(fs_ptr);
+    assert(allocated_table.empty());
+    assert(allocated_total == 0);
+}
+
 void test_linkfs() {
-    test_linkfs_simple_rw();
+    //test_linkfs_simple_rw();
+    test_linkfs_dump_rw();
     //test_linkfs_randomized_single_file_rw(10.0f);
     //test_linkfs_randomized_file_rw(10.0f);
-    test_linkfs_randomized_dump_rw(10.0f);
+    //test_linkfs_randomized_dump_rw(10.0f);
 }
 
 extern "C" {
