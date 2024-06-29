@@ -5,6 +5,11 @@
 #include "crc32_ccit.h"
 #include "structures.h"
 
+#define LINKFS_STRINGIFY(x) #x
+#define LINKFS_TO_STRING(x) LINKFS_STRINGIFY(x)
+#define LINKFS_MALLOC_TAG "Allocated in: " __FILE__ "(" LINKFS_TO_STRING(__LINE__)  ")"
+#define LINKFS_FREE_TAG "Freed in: " __FILE__ "(" LINKFS_TO_STRING(__LINE__)  ")"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

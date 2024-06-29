@@ -31,7 +31,12 @@ namespace {
 
 #define MAYBE_UNUSED(x) maybe_unused(x);
 
-static std::unordered_map<intptr_t, size_t> allocated_table = {};
+struct allocated_info_t {
+    size_t size;
+    const char* location;
+};
+
+static std::unordered_map<intptr_t, allocated_info_t> allocated_table = {};
 static size_t allocated_total = 0;
 
 class SpinLock_t {
@@ -64,18 +69,19 @@ public:
 };
 
 extern "C" {
-    void* user_malloc(size_t size) {
+    void* user_malloc(size_t size, const char* malloc_tag) {
         const SpinLockAllocatorGuard G;
         void* ptr = malloc(size);
-        allocated_table[(intptr_t)ptr] = size;
+        allocated_table[(intptr_t)ptr] = { size, malloc_tag };
         allocated_total += size;
         return ptr;
     }
 
-    void user_free(void* ptr) {
+    void user_free(void* ptr, const char* free_tag) {
+        MAYBE_UNUSED(free_tag);
         const SpinLockAllocatorGuard G;
         assert(allocated_table.find((intptr_t)ptr) != allocated_table.end());
-        allocated_total -= allocated_table[(intptr_t)ptr];
+        allocated_total -= allocated_table[(intptr_t)ptr].size;
         allocated_table.erase((intptr_t)ptr);
         free(ptr);
     }
@@ -639,7 +645,7 @@ lowfat_fs* open_lowfat_fs_from_file(const char* filename) {
             uint32_t filename_length;
         } header;
         fread(&header, sizeof(header), 1, f);
-        uint8_t* mem = (uint8_t*)user_malloc(header.cluster_size * header.cluster_count);
+        uint8_t* mem = (uint8_t*)user_malloc(header.cluster_size * header.cluster_count, LINKFS_MALLOC_TAG);
         memcpy(mem, &header, sizeof(header));
         fread(mem + sizeof(header), header.cluster_size * header.cluster_count - sizeof(header), 1, f);
         fclose(f);
@@ -717,7 +723,7 @@ void test_randomized_partial_dump(const float duration) {
         s_fs_start = (void*)fs_ptr->_data;
         lowfat_fs_walk_over_changed_data(fs_ptr, rewriter);
         if (rewritten_once) {
-            user_free(fs_ptr->_data);
+            user_free(fs_ptr->_data, LINKFS_FREE_TAG);
         }
         lowfat_fs_destroy_instance(fs_ptr);
         fs_ptr = nullptr;
@@ -748,7 +754,7 @@ void test_randomized_partial_dump(const float duration) {
     assert(free_memory == free_memory_calculated);
     printf("File system randomized partial dump test finished: %zu MB, %zu KB, %zu bytes were rewritten for fs of size %u \n", rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes, lowfat_fs_total_size(fs_ptr)); 
     if (fs_ptr) {
-        user_free(fs_ptr->_data);
+        user_free(fs_ptr->_data, LINKFS_FREE_TAG);
         lowfat_fs_destroy_instance(fs_ptr);
     }
     

@@ -3,8 +3,8 @@
 #include "linkfs.h"
 
 #ifdef LINKFS_CUSTOM_ALLOCATOR
-extern void* user_malloc(size_t size);
-extern void user_free(void*);
+extern void* user_malloc(size_t size, const char* malloc_tag);
+extern void user_free(void*, const char* free_tag);
 #define LINKFS_ALLOC user_malloc
 #define LINKFS_FREE user_free
 #else
@@ -35,9 +35,9 @@ extern void user_debugbreak(const char* const format, ...);
 
 linkfs_string_t* linkfs_create_string(const char* line) {
     size_t len = strlen(line) + 1;
-    linkfs_string_t* str_ptr = LINKFS_ALLOC(sizeof(linkfs_string_t));
+    linkfs_string_t* str_ptr = LINKFS_ALLOC(sizeof(linkfs_string_t), LINKFS_MALLOC_TAG);
     str_ptr->length = len;
-    str_ptr->content = LINKFS_ALLOC(len);
+    str_ptr->content = LINKFS_ALLOC(len, LINKFS_MALLOC_TAG);
     str_ptr->content[len - 1] = '\0';
     memcpy(str_ptr->content, line, len);
     return str_ptr;
@@ -45,27 +45,27 @@ linkfs_string_t* linkfs_create_string(const char* line) {
 
 void linkfs_destroy_string(linkfs_string_t* str_ptr) {
     if (str_ptr) {
-        LINKFS_FREE(str_ptr->content);
-        LINKFS_FREE(str_ptr);
+        LINKFS_FREE(str_ptr->content, LINKFS_FREE_TAG);
+        LINKFS_FREE(str_ptr, LINKFS_FREE_TAG);
     }
 }
 
 linkfs_memory_block_t* linkfs_create_memory_block(size_t size) {
-    linkfs_memory_block_t* block_ptr = LINKFS_ALLOC(sizeof(linkfs_memory_block_t));
+    linkfs_memory_block_t* block_ptr = LINKFS_ALLOC(sizeof(linkfs_memory_block_t), LINKFS_MALLOC_TAG);
     block_ptr->size = size;
-    block_ptr->data = LINKFS_ALLOC(size);
+    block_ptr->data = LINKFS_ALLOC(size, LINKFS_MALLOC_TAG);
     return block_ptr;
 }
 
 void linkfs_destroy_memory_block(linkfs_memory_block_t* block_ptr) {
     if (block_ptr) {
-        LINKFS_FREE(block_ptr->data);
-        LINKFS_FREE(block_ptr);
+        LINKFS_FREE(block_ptr->data, LINKFS_FREE_TAG);
+        LINKFS_FREE(block_ptr, LINKFS_FREE_TAG);
     }
 }
 
 linkfs_cluster_t* linkfs_create_cluster(size_t block_size) {
-    linkfs_cluster_t* cluster_ptr = LINKFS_ALLOC(sizeof(linkfs_cluster_t));
+    linkfs_cluster_t* cluster_ptr = LINKFS_ALLOC(sizeof(linkfs_cluster_t), LINKFS_MALLOC_TAG);
     cluster_ptr->block = linkfs_create_memory_block(block_size);
     cluster_ptr->next = NULL;
     return cluster_ptr;
@@ -74,7 +74,7 @@ linkfs_cluster_t* linkfs_create_cluster(size_t block_size) {
 void linkfs_destroy_cluster(linkfs_cluster_t* cluster_ptr) {
     if (cluster_ptr) {
         linkfs_destroy_memory_block(cluster_ptr->block);
-        LINKFS_FREE(cluster_ptr);
+        LINKFS_FREE(cluster_ptr, LINKFS_FREE_TAG);
     }
 }
 
@@ -92,7 +92,7 @@ void linkfs_set_default_file(linkfs_file_t* file_ptr, size_t block_size) {
 }
 
 linkfs_file_t* linkfs_create_file(const char* filename, size_t block_size) {
-    linkfs_file_t* file_ptr = LINKFS_ALLOC(sizeof(linkfs_file_t));
+    linkfs_file_t* file_ptr = LINKFS_ALLOC(sizeof(linkfs_file_t), LINKFS_MALLOC_TAG);
     file_ptr->filename = linkfs_create_string(filename);
     linkfs_set_default_file(file_ptr, block_size);
     return file_ptr;
@@ -213,12 +213,12 @@ void linkfs_destroy_file(linkfs_file_t* file_ptr) {
         file_ptr->props.current_index = 0;
         file_ptr->props.current_byte = 0;
         file_ptr->props.flags = 0;
-        LINKFS_FREE(file_ptr);
+        LINKFS_FREE(file_ptr, LINKFS_FREE_TAG);
     }
 }
 
 linkfs_file_vector_t* linkfs_create_file_vector() {
-    linkfs_file_vector_t* file_vector_ptr = LINKFS_ALLOC(sizeof(linkfs_file_vector_t));
+    linkfs_file_vector_t* file_vector_ptr = LINKFS_ALLOC(sizeof(linkfs_file_vector_t), LINKFS_MALLOC_TAG);
     file_vector_ptr->capacity = 0;
     file_vector_ptr->size = 0;
     file_vector_ptr->entries = NULL;
@@ -232,16 +232,16 @@ void linkfs_file_vector_reserve(linkfs_file_vector_t* file_vector_ptr, const siz
             file_vector_ptr->entries[i] = NULL;
         }
         if (new_capacity) {
-            linkfs_file_t** files = LINKFS_ALLOC(new_capacity * sizeof(linkfs_file_t*));
+            linkfs_file_t** files = LINKFS_ALLOC(new_capacity * sizeof(linkfs_file_t*), LINKFS_MALLOC_TAG);
             size_t copy_count = new_capacity < file_vector_ptr->capacity ? new_capacity : file_vector_ptr->capacity;
             if (file_vector_ptr->entries) {
                 memcpy(files, file_vector_ptr->entries, copy_count * sizeof(linkfs_file_t*));
-                LINKFS_FREE(file_vector_ptr->entries);
+                LINKFS_FREE(file_vector_ptr->entries, LINKFS_FREE_TAG);
             }
             file_vector_ptr->entries = files;
         }
         else {
-            LINKFS_FREE(file_vector_ptr->entries);
+            LINKFS_FREE(file_vector_ptr->entries, LINKFS_FREE_TAG);
             file_vector_ptr->entries = NULL;
         }
         file_vector_ptr->capacity = new_capacity;
@@ -329,14 +329,14 @@ void linkfs_destroy_file_vector(linkfs_file_vector_t* file_vector_ptr) {
         file_vector_ptr->capacity = 0;
         file_vector_ptr->size = 0;
         if (file_vector_ptr->entries) {
-            LINKFS_FREE(file_vector_ptr->entries);
+            LINKFS_FREE(file_vector_ptr->entries, LINKFS_FREE_TAG);
         }
-        LINKFS_FREE(file_vector_ptr);
+        LINKFS_FREE(file_vector_ptr, LINKFS_FREE_TAG);
     }
 }
 
 linkfs* linkfs_create_instance() {
-    linkfs* fs_ptr = LINKFS_ALLOC(sizeof(linkfs));
+    linkfs* fs_ptr = LINKFS_ALLOC(sizeof(linkfs), LINKFS_MALLOC_TAG);
     fs_ptr->files = linkfs_create_file_vector();
     return fs_ptr;
 }
@@ -344,7 +344,7 @@ linkfs* linkfs_create_instance() {
 void linkfs_destroy_instance(linkfs* fs_ptr) {
     if (fs_ptr) {
         linkfs_destroy_file_vector(fs_ptr->files);
-        LINKFS_FREE(fs_ptr);
+        LINKFS_FREE(fs_ptr, LINKFS_FREE_TAG);
     }
 }
 
