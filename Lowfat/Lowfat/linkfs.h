@@ -28,6 +28,7 @@ typedef struct {
     size_t block_size;
     size_t block_count;
     size_t size;
+    size_t allocated;
     uint32_t crc;
     size_t current_index;
     size_t current_byte;
