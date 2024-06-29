@@ -140,18 +140,24 @@ linkfs_file_t* linkfs_create_file_from_memory_block(const linkfs_memory_block_t*
         const char* filename = (const char*)(block_ptr->data + 4);
         const linkfs_file_props_t* props_ptr = (linkfs_file_props_t*)(block_ptr->data + filename_length + 4);
         linkfs_file_t* file_ptr = linkfs_create_file(filename, props_ptr->block_size);
-        size_t file_size = file_ptr->props.size;
-        size_t block_offset = filename_length + 4;
+        size_t file_size = props_ptr->size;
+        size_t block_offset = filename_length + 4 + sizeof(linkfs_file_props_t);
         file_ptr->start = linkfs_create_cluster(props_ptr->block_size);
         file_ptr->current = file_ptr->start;
+        uint32_t crc = 0;
         while (file_size) {
             size_t block_size = file_size < props_ptr->block_size ? file_size : props_ptr->block_size;
+            crc = crc32_ccit_update(block_ptr->data + block_offset, block_size, crc ^ 0xFFFFFFFF);
             memcpy(file_ptr->current->block->data, block_ptr->data + block_offset, block_size);
+            file_size -= block_size;
+            block_offset += block_size;
+            if (file_size == 0) {
+                break;
+            }
             file_ptr->current->next = linkfs_create_cluster(props_ptr->block_size);
             file_ptr->current = file_ptr->current->next;
-            block_offset += block_size;
-            file_size -= block_size;
         }
+        LINKFS_ASSERT(props_ptr->crc == crc);
         memcpy(&file_ptr->props, props_ptr, sizeof(linkfs_file_props_t));
         linkfs_reset_file_cursor(file_ptr);
         return file_ptr;
