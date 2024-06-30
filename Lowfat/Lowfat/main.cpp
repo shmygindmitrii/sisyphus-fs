@@ -982,6 +982,68 @@ void test_linkfs_randomized_single_file_rw(const float duration) {
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size);
 }
 
+void test_linkfs_randomized_single_file_rewrite(const float duration) {
+    // test different file sizes for a single file rewriting
+    const size_t min_file_block_size = 4; // 4 B
+    const size_t min_file_size = min_file_block_size * 16; // 64 B
+    const size_t max_file_block_size = 4096; // 4 KiB
+    const size_t max_file_size = max_file_block_size * 16; // 64 KiB
+    RandomUint32Generator rand_gen;
+    linkfs* fs_ptr = linkfs_create_instance(LINKFS_MALLOC_TAG);
+    size_t min_random_file_block_size = UINT64_MAX;
+    size_t max_random_file_block_size = 0;
+    size_t min_random_file_size = UINT64_MAX;
+    size_t max_random_file_size = 0;
+    size_t cycle_count = 0;
+    const auto start{ std::chrono::steady_clock::now() };
+    auto end{ std::chrono::steady_clock::now() };
+    std::chrono::duration<double> elapsed = end - start;
+    static uint32_t rewrite_count = 0;
+    static uint32_t recreate_count = 0;
+    while (elapsed.count() < duration) {
+        size_t cur_file_size = static_cast<size_t>(rand_gen()) % (max_file_size - min_file_size) + min_file_size;
+        linkfs_file_t* file_ptr = linkfs_find_file(fs_ptr, "test_0.bin");
+        if (file_ptr) {
+            file_ptr = linkfs_open_file(fs_ptr, "test_0.bin", 'w', LINKFS_MALLOC_TAG);
+            rewrite_count++;
+        }
+        else {
+            size_t cur_file_block_size = static_cast<size_t>(rand_gen()) % (max_file_block_size - min_file_block_size) + min_file_block_size;
+            min_random_file_block_size = min(min_random_file_block_size, cur_file_block_size);
+            max_random_file_block_size = max(max_random_file_block_size, cur_file_block_size);
+            file_ptr = linkfs_open_new_file(fs_ptr, "test_0.bin", cur_file_block_size, LINKFS_MALLOC_TAG);
+            recreate_count++;
+        }
+        linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(cur_file_size, LINKFS_MALLOC_TAG);
+        uint32_t crc = fill_random_memory_block_and_calc_crc32(block_ptr);
+        size_t written = linkfs_write_file(file_ptr, block_ptr, LINKFS_MALLOC_TAG);
+        linkfs_close_file(file_ptr);
+        assert(written == block_ptr->size);
+        linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
+        assert(crc == file_ptr->props.crc);
+        if (uint32_t delete_chance = rand_gen() % 100; delete_chance < 10) {
+            // 10% probability to remove file and change its block_size during creation
+            linkfs_remove_file(fs_ptr, file_ptr, LINKFS_FREE_TAG);
+        }
+        min_random_file_size = min(min_random_file_size, cur_file_size);
+        max_random_file_size = max(max_random_file_size, cur_file_size);
+        cycle_count++;
+        end = std::chrono::steady_clock::now();
+        elapsed = end - start;
+        static auto prev_passed = elapsed.count();
+        const auto cur_passed = elapsed.count();
+        if (cur_passed - prev_passed > 1.0f) {
+            printf("[ linkfs ] test_linkfs_randomized_single_file_rewrite: finished %.1f%% \n", cur_passed / duration * 100.0f);
+            prev_passed = cur_passed;
+        }
+    }
+    linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
+    assert(allocated_table.empty());
+    assert(allocated_total == 0);
+    printf("[ linkfs ] randomized single file rewrite test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", recreated %u times, rewritten %u times\n",
+        cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, recreate_count, rewrite_count);
+}
+
 void test_linkfs_randomized_file_rw(const float duration) {
     const size_t min_file_block_size = 4; // 4 B
     const size_t min_file_size = min_file_block_size * 16; // 64 B
@@ -1280,11 +1342,13 @@ void test_linkfs_dump_rw(){
 }
 
 void test_linkfs() {
-    //test_linkfs_simple_rw();
+    test_linkfs_simple_rw();
     test_linkfs_dump_rw();
     test_linkfs_randomized_single_file_rw(10.0f);
+    test_linkfs_randomized_single_file_rewrite(10.0f);
     test_linkfs_randomized_file_rw(10.0f);
     test_linkfs_randomized_dump_rw(10.0f);
+
 }
 
 extern "C" {
