@@ -421,7 +421,7 @@ linkfs_file_t* linkfs_open_file(linkfs* fs_ptr, const char* filename, char mode,
 }
 
 size_t linkfs_read_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* const buffer) {
-    if (file_ptr && buffer && buffer->size <= file_ptr->props.size) {
+    if (file_ptr && buffer && buffer->size <= file_ptr->props.size && (file_ptr->props.flags & LINKFS_FILE_LOCKED)) {
         size_t read = file_ptr->props.current_index * file_ptr->props.block_size + file_ptr->props.current_byte;
         size_t length = buffer->size;
         length = length > file_ptr->props.size - read ? file_ptr->props.size - read : length;
@@ -445,7 +445,7 @@ size_t linkfs_read_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* co
 }
 
 size_t linkfs_write_file(linkfs_file_t* file_ptr, const linkfs_memory_block_t* const buffer, const char* malloc_tag) {
-    if (file_ptr) {
+    if (file_ptr && (file_ptr->props.flags & LINKFS_FILE_LOCKED)) {
         size_t write_bytes = buffer->size;
         size_t buffer_offset = 0;
         while (1) {
