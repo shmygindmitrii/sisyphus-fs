@@ -9,15 +9,23 @@ extern void user_free(void*, const char* free_tag);
 #define LINKFS_FREE user_free
 #else
 #pragma message("[ linkfs ] warning: use default malloc and free")
-#define LINKFS_ALLOC malloc
-#define LINKFS_FREE free
+static void* default_malloc(size_t size, const char* malloc_tag) {
+    (void)malloc_tag;
+    return malloc(size);
+}
+static void default_free(void* ptr, const char* free_tag) {
+    (void)free_tag;
+    free(ptr);
+}
+#define LINKFS_ALLOC default_malloc
+#define LINKFS_FREE default_free
 #endif
 
 #define LINKFS_PRINT_ERROR "[ linkfs ][ error ]: "
 #define LINKFS_PRINT_WARNING "[ linkfs ][ warning ]: "
 #define LINKFS_PRINT_INFO "[ linkfs ][ info ]: "
 
-void default_debugbreak(const char* const format, ...) {
+static void default_debugbreak(const char* const format, ...) {
     va_list args;
     va_start(args, format);
     vfprintf(stderr, format, args);
