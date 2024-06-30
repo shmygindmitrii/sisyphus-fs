@@ -15,48 +15,45 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="source\linkfs\src\linkfs.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="crc32_ccit.c">
+    <ClCompile Include="source\lowfatfs\src\lowfat.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="lowfat.c">
+    <ClCompile Include="source\tests\src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="structures.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="linkfs.c">
+    <ClCompile Include="source\crc\src\crc32_ccit.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="crc32_ccit.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="lowfat.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="lowfat_defines.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="lowfat_prelude.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="structures.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="structures_prelude.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="linkfs.h">
+    <ClInclude Include="source\crc32\inc\crc32_ccit.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="linkfs_prelude.h">
+    <ClInclude Include="source\linkfs\inc\linkfs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="linkfs_defines.h">
+    <ClInclude Include="source\linkfs\inc\linkfs_defines.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="source\linkfs\inc\linkfs_prelude.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="source\lowfatfs\inc\lowfat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="source\lowfatfs\inc\lowfat_defines.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="source\lowfatfs\inc\lowfat_prelude.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

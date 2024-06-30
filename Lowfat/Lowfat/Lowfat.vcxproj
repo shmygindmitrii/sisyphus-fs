@@ -140,10 +140,11 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>LINKFS_ASSERT_ENABLED;LINKFS_CUSTOM_ALLOCATOR;LOWFAT_FS_VERBOSITY=LOWFAT_FS_VERBOSITY_DETAILED;LOWFAT_FS_CUSTOM_ALLOCATOR;LOWFAT_FS_ASSERT_ENABLED;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>LINKFS_CUSTOM_ALLOCATOR;LINKFS_ASSERT_ENABLED;LOWFAT_FS_VERBOSITY=LOWFAT_FS_VERBOSITY_DETAILED;LOWFAT_FS_CUSTOM_ALLOCATOR;LOWFAT_FS_ASSERT_ENABLED;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <TreatWarningAsError>true</TreatWarningAsError>
+      <AdditionalIncludeDirectories>source/structures/inc;source/crc/inc;source/linkfs/inc;source/lowfatfs/inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -154,7 +155,7 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>LINKFS_CUSTOM_ALLOCATOR;LOWFAT_FS_VERBOSITY=LOWFAT_FS_VERBOSITY_MIN;LOWFAT_FS_CUSTOM_ALLOCATOR;LOWFAT_FS_ASSERT_ENABLED;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>LINKFS_CUSTOM_ALLOCATOR;LINKFS_CUSTOM_ALLOCATOR;LOWFAT_FS_VERBOSITY=LOWFAT_FS_VERBOSITY_MIN;LOWFAT_FS_CUSTOM_ALLOCATOR;LOWFAT_FS_ASSERT_ENABLED;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -164,6 +165,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <AssemblerOutput>AssemblyAndSourceCode</AssemblerOutput>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <AdditionalIncludeDirectories>source/structures/inc;source/crc/inc;source/linkfs/inc;source/lowfatfs/inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -176,9 +178,10 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>LINKFS_CUSTOM_ALLOCATOR;LOWFAT_FS_CUSTOM_ALLOCATOR;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>LINKFS_CUSTOM_ALLOCATOR;LINKFS_CUSTOM_ALLOCATOR;LOWFAT_FS_CUSTOM_ALLOCATOR;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>source/structures/inc;source/crc/inc;source/linkfs/inc;source/lowfatfs/inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -188,20 +191,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="crc32_ccit.c" />
-    <ClCompile Include="linkfs.c" />
-    <ClCompile Include="lowfat.c" />
-    <ClCompile Include="main.cpp" />
-    <ClCompile Include="structures.c" />
+    <ClCompile Include="source\crc\src\crc32_ccit.c" />
+    <ClCompile Include="source\linkfs\src\linkfs.c" />
+    <ClCompile Include="source\lowfatfs\src\lowfat.c" />
+    <ClCompile Include="source\tests\src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="crc32_ccit.h" />
-    <ClInclude Include="linkfs.h" />
-    <ClInclude Include="linkfs_defines.h" />
-    <ClInclude Include="linkfs_prelude.h" />
-    <ClInclude Include="lowfat.h" />
-    <ClInclude Include="lowfat_defines.h" />
-    <ClInclude Include="lowfat_prelude.h" />
+    <ClInclude Include="source\crc32\inc\crc32_ccit.h" />
+    <ClInclude Include="source\linkfs\inc\linkfs.h" />
+    <ClInclude Include="source\linkfs\inc\linkfs_defines.h" />
+    <ClInclude Include="source\linkfs\inc\linkfs_prelude.h" />
+    <ClInclude Include="source\lowfatfs\inc\lowfat.h" />
+    <ClInclude Include="source\lowfatfs\inc\lowfat_defines.h" />
+    <ClInclude Include="source\lowfatfs\inc\lowfat_prelude.h" />
     <ClInclude Include="structures.h" />
     <ClInclude Include="structures_prelude.h" />
   </ItemGroup>
