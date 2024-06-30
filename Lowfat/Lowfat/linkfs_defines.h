@@ -4,12 +4,8 @@
 #define LINKFS_NONE                             -1
 
 #define LINKFS_FILE_LOCKED                       1
-#define LINKFS_FILE_READ                         2
-#define LINKFS_FILE_WRITE                        4
 
 #define LINKFS_CLUSTER_TOUCHED                   1
-
-#define LINKFS_FILE_LRW_INV_MASK                (0xFF ^ (LINKFS_FILE_LOCKED | LINKFS_FILE_READ | LINKFS_FILE_WRITE))
 
 #define LINKFS_ERROR_DATA_TABLE_ENDED           -2
 #define LINKFS_ERROR_SPACE_ENDED                -3

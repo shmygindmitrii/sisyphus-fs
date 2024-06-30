@@ -1164,6 +1164,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             uint32_t crc = fill_random_memory_block_and_calc_crc32(block_ptr);
             crcs.emplace_back(crc);
             size_t written = linkfs_write_file(file_ptr, block_ptr, LINKFS_MALLOC_TAG);
+            linkfs_close_file(file_ptr);
             assert(written == block_ptr->size);
             linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
             assert(crc == file_ptr->props.crc);
@@ -1235,7 +1236,7 @@ void test_linkfs_randomized_dump_rw(const float duration) {
         static auto prev_passed = elapsed.count();
         const auto cur_passed = elapsed.count();
         if (cur_passed - prev_passed > 1.0f) {
-            printf("[ linkfs ] test_linkfs_randomized_file_rw: finished %.1f%% \n", cur_passed / duration * 100.0f);
+            printf("[ linkfs ] test_linkfs_randomized_dump_rw: finished %.1f%% \n", cur_passed / duration * 100.0f);
             prev_passed = cur_passed;
         }
     }
@@ -1281,9 +1282,9 @@ void test_linkfs_dump_rw(){
 void test_linkfs() {
     //test_linkfs_simple_rw();
     test_linkfs_dump_rw();
-    //test_linkfs_randomized_single_file_rw(10.0f);
-    //test_linkfs_randomized_file_rw(10.0f);
-    //test_linkfs_randomized_dump_rw(10.0f);
+    test_linkfs_randomized_single_file_rw(10.0f);
+    test_linkfs_randomized_file_rw(10.0f);
+    test_linkfs_randomized_dump_rw(10.0f);
 }
 
 extern "C" {

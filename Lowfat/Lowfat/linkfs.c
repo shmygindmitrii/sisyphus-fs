@@ -403,11 +403,11 @@ linkfs_file_t* linkfs_open_file(linkfs* fs_ptr, const char* filename, char mode,
                 }
                 size_t block_size = file_ptr->props.block_size;
                 linkfs_set_default_file(file_ptr, block_size, memory_tag);
-                file_ptr->props.flags |= LINKFS_FILE_LOCKED | LINKFS_FILE_WRITE;
+                file_ptr->props.flags |= LINKFS_FILE_LOCKED;
                 return file_ptr;
             }
             else if (mode == 'r') {
-                file_ptr->props.flags |= LINKFS_FILE_LOCKED | LINKFS_FILE_READ;
+                file_ptr->props.flags |= LINKFS_FILE_LOCKED;
                 return file_ptr;
             }
         }
