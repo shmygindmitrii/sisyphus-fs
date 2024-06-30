@@ -976,8 +976,6 @@ void test_linkfs_randomized_single_file_rw(const float duration) {
         }
     }
     linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
-    assert(allocated_table.empty());
-    assert(allocated_total == 0);
     printf("[ linkfs ] randomized single file rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 "\n",
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size);
 }
@@ -1038,8 +1036,6 @@ void test_linkfs_randomized_single_file_rewrite(const float duration) {
         }
     }
     linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
-    assert(allocated_table.empty());
-    assert(allocated_total == 0);
     printf("[ linkfs ] randomized single file rewrite test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", recreated %u times, rewritten %u times\n",
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, recreate_count, rewrite_count);
 }
@@ -1118,8 +1114,6 @@ void test_linkfs_randomized_file_rw(const float duration) {
         }
     }
     linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
-    assert(allocated_table.empty());
-    assert(allocated_total == 0);
     printf("[ linkfs ] randomized file rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", total rewritten memory is %zu MB, %zu KB, %zu bytes \n",
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes);
 }
@@ -1303,8 +1297,6 @@ void test_linkfs_randomized_dump_rw(const float duration) {
         }
     }
     linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
-    assert(allocated_table.empty());
-    assert(allocated_total == 0);
     printf("[ linkfs ] randomized dump rw test finished (%" PRIu64 " cycles): file block size varied from %" PRIu64 " to %" PRIu64 ", file size varied from %" PRIu64 " to %" PRIu64 ", total rewritten memory is %zu MB, %zu KB, %zu bytes \n",
         cycle_count, min_random_file_block_size, max_random_file_block_size, min_random_file_size, max_random_file_size, rewritten_memory.megabytes, rewritten_memory.kilobytes, rewritten_memory.bytes);
 }
@@ -1344,11 +1336,37 @@ void test_linkfs_dump_rw(){
 void test_linkfs() {
     test_linkfs_simple_rw();
     test_linkfs_dump_rw();
-    test_linkfs_randomized_single_file_rw(10.0f);
-    test_linkfs_randomized_single_file_rewrite(10.0f);
-    test_linkfs_randomized_file_rw(10.0f);
-    test_linkfs_randomized_dump_rw(10.0f);
-
+    auto rw_sinlge_file_test_func = [](void const* arg) {
+        MAYBE_UNUSED(arg);
+        test_linkfs_randomized_single_file_rw(600.0f);
+        return 0;
+        };
+    auto rewrite_sinlge_file_test_func = [](void const* arg) {
+        MAYBE_UNUSED(arg);
+        test_linkfs_randomized_single_file_rewrite(600.0f);
+        return 0;
+        };
+    auto randomized_file_rw_test_func = [](void const* arg) {
+        MAYBE_UNUSED(arg);
+        test_linkfs_randomized_file_rw(600.0f);
+        return 0;
+        };
+    auto randomized_dump_rw_test_func = [](void const* arg) {
+        MAYBE_UNUSED(arg);
+        test_linkfs_randomized_dump_rw(600.0f);
+        return 0;
+        };
+    
+    Thread rw_sinlge_file_test_thread = create_thread("rw_sinlge_file_test_thread", 0, 0, rw_sinlge_file_test_func, nullptr);
+    Thread rewrite_sinlge_file_test_thread = create_thread("rewrite_sinlge_file_test_thread", 0, 0, rewrite_sinlge_file_test_func, nullptr);
+    Thread randomized_file_rw_test_thread = create_thread("randomized_file_rw_test_thread", 0, 0, randomized_file_rw_test_func, nullptr);
+    Thread randomized_dump_rw_test_thread = create_thread("randomized_dump_rw_test_thread", 0, 0, randomized_dump_rw_test_func, nullptr);
+    join_thread(rw_sinlge_file_test_thread);
+    join_thread(rewrite_sinlge_file_test_thread);
+    join_thread(randomized_file_rw_test_thread);
+    join_thread(randomized_dump_rw_test_thread);
+    assert(allocated_table.empty());
+    assert(allocated_total == 0);
 }
 
 extern "C" {
