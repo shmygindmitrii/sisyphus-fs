@@ -1312,7 +1312,9 @@ void test_linkfs_dump_rw(){
     linkfs_close_file(file_ptr);
     test_linkfs_binary_dump("linkfs_dump.bin", fs_ptr);
     linkfs_destroy_instance(fs_ptr, LINKFS_FREE_TAG);
+#ifdef LINKFS_CUSTOM_ALLOCATOR
     assert(allocated_total == block_ptr->size + sizeof(linkfs_memory_block_t));
+#endif
     //
     fs_ptr = test_linkfs_binary_creation("linkfs_dump.bin");
     file_ptr = linkfs_open_file(fs_ptr, "test.bin", 'r', LINKFS_MALLOC_TAG);
