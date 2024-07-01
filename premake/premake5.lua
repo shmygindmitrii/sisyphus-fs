@@ -4,6 +4,7 @@ workspace("sisyphys-fs")
     defines { "WIN32", "_CONSOLE" }
     language "C++"
     location("../build/")
+    startproject "tests"
 
 filter "configurations:Debug"
     defines { "_DEBUG" }
