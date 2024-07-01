@@ -1,6 +1,6 @@
-#include "lowfat_prelude.h"
-#include "lowfat_defines.h"
-#include "lowfat.h"
+#include "lowfatfs_prelude.h"
+#include "lowfatfs_defines.h"
+#include "lowfatfs.h"
 
 #ifdef LOWFAT_FS_CUSTOM_ALLOCATOR
 extern void* user_malloc(size_t size);

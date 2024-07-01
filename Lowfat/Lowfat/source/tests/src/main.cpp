@@ -18,7 +18,7 @@
 #include <cstdlib>
 
 #include "crc32_ccit.h"
-#include "lowfat.h"
+#include "lowfatfs.h"
 #include "linkfs.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -84,6 +84,14 @@ extern "C" {
         allocated_total -= allocated_table[(intptr_t)ptr].size;
         allocated_table.erase((intptr_t)ptr);
         free(ptr);
+    }
+    void user_debugbreak(const char* const format, ...) {
+        va_list args;
+        va_start(args, format);
+        vfprintf(stderr, format, args);
+        va_end(args);
+        fflush(stderr);
+        __debugbreak();
     }
 }
 

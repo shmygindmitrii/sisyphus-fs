@@ -1,7 +1,7 @@
 #pragma once
 
-#include "lowfat_prelude.h"
-#include "lowfat_defines.h"
+#include "lowfatfs_prelude.h"
+#include "lowfatfs_defines.h"
 #include "crc32_ccit.h"
 #include "structures.h"
 

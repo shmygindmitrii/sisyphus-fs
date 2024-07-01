@@ -3,7 +3,6 @@
 #include "linkfs_prelude.h"
 #include "linkfs_defines.h"
 #include "crc32_ccit.h"
-#include "structures.h"
 
 #define LINKFS_STRINGIFY(x) #x
 #define LINKFS_TO_STRING(x) LINKFS_STRINGIFY(x)

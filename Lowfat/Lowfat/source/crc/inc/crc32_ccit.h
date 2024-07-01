@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lowfat_prelude.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {

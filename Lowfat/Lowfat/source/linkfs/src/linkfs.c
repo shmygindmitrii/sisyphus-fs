@@ -25,6 +25,11 @@ static void default_free(void* ptr, const char* free_tag) {
 #define LINKFS_PRINT_WARNING "[ linkfs ][ warning ]: "
 #define LINKFS_PRINT_INFO "[ linkfs ][ info ]: "
 
+
+#ifdef LINKFS_CUSTOM_DEBUGBREAK
+extern void user_debugbreak(const char* const format, ...);
+#define LINKFS_DEBUGBREAK user_debugbreak
+#else
 static void default_debugbreak(const char* const format, ...) {
     va_list args;
     va_start(args, format);
@@ -33,11 +38,6 @@ static void default_debugbreak(const char* const format, ...) {
     fflush(stderr);
     __debugbreak();
 }
-
-#ifdef LINKFS_CUSTOM_DEBUGBREAK
-extern void user_debugbreak(const char* const format, ...);
-#define LINKFS_DEBUGBREAK user_debugbreak
-#else
 #define LINKFS_DEBUGBREAK default_debugbreak
 #endif
 
