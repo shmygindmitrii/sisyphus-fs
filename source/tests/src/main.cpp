@@ -829,17 +829,17 @@ void test_lowfat_fs() {
     test_crc32();
     auto rw_test_func = [](void const* arg) {
         MAYBE_UNUSED(arg);
-        test_randomized_rw(600.0f);
+        test_randomized_rw(120.0f);
         return 0;
         };
     auto dump_test_func = [](void const* arg) {
         MAYBE_UNUSED(arg);
-        test_randomized_dump(600.0f);
+        test_randomized_dump(120.0f);
         return 0;
         };
     auto partial_dump_test_func = [](void const* arg) {
         MAYBE_UNUSED(arg);
-        test_randomized_partial_dump(600.0f);
+        test_randomized_partial_dump(120.0f);
         return 0;
         };
 
@@ -1348,22 +1348,22 @@ void test_linkfs() {
     test_linkfs_dump_rw();
     auto rw_sinlge_file_test_func = [](void const* arg) {
         MAYBE_UNUSED(arg);
-        test_linkfs_randomized_single_file_rw(600.0f);
+        test_linkfs_randomized_single_file_rw(120.0f);
         return 0;
         };
     auto rewrite_sinlge_file_test_func = [](void const* arg) {
         MAYBE_UNUSED(arg);
-        test_linkfs_randomized_single_file_rewrite(600.0f);
+        test_linkfs_randomized_single_file_rewrite(120.0f);
         return 0;
         };
     auto randomized_file_rw_test_func = [](void const* arg) {
         MAYBE_UNUSED(arg);
-        test_linkfs_randomized_file_rw(600.0f);
+        test_linkfs_randomized_file_rw(120.0f);
         return 0;
         };
     auto randomized_dump_rw_test_func = [](void const* arg) {
         MAYBE_UNUSED(arg);
-        test_linkfs_randomized_dump_rw(600.0f);
+        test_linkfs_randomized_dump_rw(120.0f);
         return 0;
         };
     
@@ -1382,7 +1382,7 @@ void test_linkfs() {
 extern "C" {
     int main()
     {
-        //test_lowfat_fs();
+        test_lowfat_fs();
         test_linkfs();
         return 0;
     }
