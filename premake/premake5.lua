@@ -1,4 +1,4 @@
-workspace("sisyphys-fs")
+workspace("sisyphus-fs")
     configurations { "Debug", "Release" }
     architecture "x64"
     defines { "WIN32", "_CONSOLE" }

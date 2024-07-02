@@ -12,6 +12,6 @@ project("lowfatfs")
     targetdir("../../build/lowfatfs/bin")
     objdir("../../build/lowfatfs/obj")
     exceptionhandling("On")
-    defines { "_LIB", "LOWFAT_FS_VERBOSITY=LOWFAT_FS_VERBOSITY_DETAILED", "LOWFAT_FS_CUSTOM_ALLOCATOR", "LOWFAT_FS_ASSERT_ENABLED" }
+    defines { "_LIB", "LOWFATFS_VERBOSITY=LOWFATFS_VERBOSITY_DETAILED", "LOWFATFS_CUSTOM_ALLOCATOR", "LOWFATFS_ASSERT_ENABLED" }
     links {"crc"}
     --libdirs {"../../build/crc/lib"}
