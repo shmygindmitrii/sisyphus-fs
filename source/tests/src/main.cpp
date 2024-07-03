@@ -140,9 +140,6 @@ struct MemAmount_t {
     }
 };
 
-enum class out_of_space_t {};
-static const out_of_space_t out_of_space = {};
-
 struct write_info_t {
     uint32_t filesize = 0;
     uint32_t crc = 0;
@@ -783,9 +780,6 @@ uint32_t fill_random_memory_block_and_calc_crc32(linkfs_memory_block_t* block) {
     }
     return crc32_ccit_update(block->data, static_cast<uint32_t>(block->size), CRC32_CCIT_DEFAULT_VALUE);
 }
-
-enum class null_pointer_t {};
-static const null_pointer_t null_pointer = {};
 
 write_info_t write_to_linkfs_instance_random_file(linkfs* fs_ptr, size_t file_max_size, size_t file_block_max_size) {
     write_info_t wrinfo = {};
