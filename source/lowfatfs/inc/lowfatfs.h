@@ -5,6 +5,11 @@
 #include "crc32_ccit.h"
 #include "structures.h"
 
+#define LOWFATFS_STRINGIFY(x) #x
+#define LOWFATFS_TO_STRING(x) LOWFATFS_STRINGIFY(x)
+#define LOWFATFS_MALLOC_TAG "Allocated in: " __FILE__ "(" LOWFATFS_TO_STRING(__LINE__)  ")"
+#define LOWFATFS_FREE_TAG "Freed in: " __FILE__ "(" LOWFATFS_TO_STRING(__LINE__)  ")"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

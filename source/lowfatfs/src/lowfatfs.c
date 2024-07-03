@@ -3,14 +3,22 @@
 #include "lowfatfs.h"
 
 #ifdef LOWFATFS_CUSTOM_ALLOCATOR
-extern void* user_malloc(size_t size);
-extern void user_free(void*);
+extern void* user_malloc(size_t size, const char* malloc_tag);
+extern void user_free(void*, const char* free_tag);
 #define LOWFATFS_ALLOC user_malloc
 #define LOWFATFS_FREE user_free
 #else
 #pragma message("Warning: use default malloc and free")
-#define LOWFATFS_ALLOC malloc
-#define LOWFATFS_FREE free
+static void* default_malloc(size_t size, const char* malloc_tag) {
+    (void)malloc_tag;
+    return malloc(size);
+}
+static void default_free(void* ptr, const char* free_tag) {
+    (void)free_tag;
+    free(ptr);
+}
+#define LOWFATFS_ALLOC default_malloc
+#define LOWFATFS_FREE default_free
 #endif
 
 // double linked-list functions
@@ -86,7 +94,7 @@ lowfatfs_fileinfo_t lowfatfs_create_fileinfo(void* name_ptr, void* props_ptr) {
 // fs
 
 lowfatfs* lowfatfs_create_instance(uint32_t cluster_size, uint32_t cluster_count, uint32_t filename_length, uint8_t* mem) {
-    lowfatfs* fs_ptr = (lowfatfs*)LOWFATFS_ALLOC(sizeof(lowfatfs));
+    lowfatfs* fs_ptr = (lowfatfs*)LOWFATFS_ALLOC(sizeof(lowfatfs), LOWFATFS_MALLOC_TAG);
     fs_ptr->_data = mem;
     fs_ptr->_header = (lowfatfs_header*)mem;
     fs_ptr->_info._total_size = cluster_count * cluster_size;
@@ -150,7 +158,7 @@ void lowfatfs_reset_instance(lowfatfs* fs_ptr) {
 }
 
 void lowfatfs_destroy_instance(lowfatfs* fs_ptr) {
-    LOWFATFS_FREE(fs_ptr);
+    LOWFATFS_FREE(fs_ptr, LOWFATFS_FREE_TAG);
 }
 
 static inline void lowfatfs_increment_touched_clusters_count(lowfatfs* fs_ptr, uint32_t clusters) {
