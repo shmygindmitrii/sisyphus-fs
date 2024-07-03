@@ -107,7 +107,7 @@ void linkfs_reset_file_cursor(linkfs_file_t* file_ptr);
 linkfs_file_t* linkfs_open_new_file(linkfs* fs_ptr, const char* filename, size_t block_size, const char* malloc_tag);
 linkfs_file_t* linkfs_open_file(linkfs* fs_ptr, const char* filename, char mode, const char* memory_tag);
 int32_t linkfs_close_file(linkfs_file_t* file_ptr);
-uint32_t linkfs_remove_file(linkfs* fs_ptr, linkfs_file_t* file_ptr, const char* free_tag);
+uint32_t linkfs_remove_file(linkfs* fs_ptr, const linkfs_file_t* const file_ptr, const char* free_tag);
 int32_t linkfs_remove_file_str(linkfs* fs_ptr, const char* filename, const char* free_tag);
 linkfs_file_t* linkfs_find_file(const linkfs* const fs_ptr, const char* filename);
 // walk over all files if needed

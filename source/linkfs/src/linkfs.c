@@ -488,9 +488,7 @@ void linkfs_reset_file_cursor(linkfs_file_t* file_ptr) {
 
 int32_t linkfs_close_file(linkfs_file_t* file_ptr) {
     if (file_ptr && (file_ptr->props.flags & LINKFS_FILE_LOCKED) != 0) {
-        file_ptr->current = file_ptr->start;
-        file_ptr->props.current_index = 0;
-        file_ptr->props.current_byte = 0;
+        linkfs_reset_file_cursor(file_ptr);
         file_ptr->props.flags = 0;
         return 0;
     }
@@ -504,7 +502,7 @@ int32_t linkfs_close_file(linkfs_file_t* file_ptr) {
     }
 }
 
-uint32_t linkfs_remove_file(linkfs* fs_ptr, linkfs_file_t* file_ptr, const char* free_tag) {
+uint32_t linkfs_remove_file(linkfs* fs_ptr, const linkfs_file_t* const file_ptr, const char* free_tag) {
     if (fs_ptr) {
         return linkfs_file_vector_remove(fs_ptr->files, file_ptr, free_tag);
     }
