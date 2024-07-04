@@ -63,9 +63,21 @@ public:
 };
 
 extern "C" {
+    void user_debugbreak(const char* const format, ...) {
+        va_list args;
+        va_start(args, format);
+        vfprintf(stderr, format, args);
+        va_end(args);
+        fflush(stderr);
+        __debugbreak();
+    }
+
     void* user_malloc(size_t size, const char* malloc_tag) {
         const SpinLockAllocatorGuard G;
         void* ptr = malloc(size);
+        if (ptr == NULL) {
+            user_debugbreak(malloc_tag);
+        }
         allocated_table[(intptr_t)ptr] = { size, malloc_tag };
         allocated_total += size;
         return ptr;
@@ -78,14 +90,6 @@ extern "C" {
         allocated_total -= allocated_table[(intptr_t)ptr].size;
         allocated_table.erase((intptr_t)ptr);
         free(ptr);
-    }
-    void user_debugbreak(const char* const format, ...) {
-        va_list args;
-        va_start(args, format);
-        vfprintf(stderr, format, args);
-        va_end(args);
-        fflush(stderr);
-        __debugbreak();
     }
 }
 
@@ -146,19 +150,35 @@ struct write_info_t {
     std::string fname = {};
 };
 
-uint32_t write_to_lowfat_fs_file_randomly(lowfatfs* fs_ptr, int32_t fd, const std::vector<uint8_t>& content) {
+int32_t write_to_lowfat_fs_file_randomly(lowfatfs* fs_ptr, int32_t fd, const std::vector<uint8_t>& content) {
     // file should be open
     RandomUint32Generator rand_gen;
     size_t bytes_to_write = content.size();
     size_t content_offset = 0;
-    uint32_t written = 0;
     while (bytes_to_write) {
         uint32_t portion_size = bytes_to_write > 1 ? rand_gen() % (bytes_to_write - 1) + 1 : 1;
-        written += lowfatfs_write_file(fs_ptr, content.data() + content_offset, 1, portion_size, fd);
+        if (int32_t ret = lowfatfs_write_file(fs_ptr, content.data() + content_offset, 1, portion_size, fd); ret < 0) {
+            return ret;
+        }
         content_offset += portion_size;
         bytes_to_write -= portion_size;
     }
-    return written;
+    return static_cast<uint32_t>(content_offset);
+}
+
+int32_t read_from_lowfat_fs_file_randomly(lowfatfs* fs_ptr, int32_t fd, std::vector<uint8_t>& content) {
+    RandomUint32Generator rand_gen;
+    size_t bytes_to_read = content.size();
+    size_t content_offset = 0;
+    while (bytes_to_read) {
+        int32_t portion_size = static_cast<int32_t>(bytes_to_read > 1 ? rand_gen() % (bytes_to_read - 1) + 1 : 1);
+        if (int32_t ret = lowfatfs_read_file(fs_ptr, content.data() + content_offset, 1, portion_size, fd); ret != LOWFATFS_OK) {
+            return ret;
+        }
+        content_offset += portion_size;
+        bytes_to_read -= portion_size;
+    }
+    return static_cast<int32_t>(content_offset);
 }
 
 write_info_t write_to_lowfatfs_instance_random_file(lowfatfs* fs_ptr) {
@@ -177,9 +197,13 @@ write_info_t write_to_lowfatfs_instance_random_file(lowfatfs* fs_ptr) {
         printf("try to save \"%s\" of size %u\n", wrinfo.fname.c_str(), wrinfo.filesize);
 #endif
         int32_t fd = lowfatfs_open_file(fs_ptr, wrinfo.fname.c_str(), 'w');
-        uint32_t written = write_to_lowfat_fs_file_randomly(fs_ptr, fd, mem);
+        if (int32_t written = write_to_lowfat_fs_file_randomly(fs_ptr, fd, mem); written < 0) {
+            user_debugbreak(LOWFATFS_CODELINE_TAG);
+        }
+        else {
+            assert(static_cast<size_t>(written) == mem.size());
+        }
         lowfatfs_close_file(fs_ptr, fd);
-        assert(static_cast<size_t>(written) == mem.size());
         lowfatfs_fileinfo_t finfo = lowfatfs_file_stat(fs_ptr, fd);
         assert(finfo.name != nullptr);
         assert(wrinfo.crc == finfo.props->crc32);
@@ -212,13 +236,13 @@ uint32_t check_lowfatfs_single_file(lowfatfs* fs_ptr, std::string_view filename,
     // read file content
     std::vector<uint8_t> file_content(finfo.props->size, 0);
     int32_t fd = lowfatfs_open_file(fs_ptr, filename.data(), 'r');
-    int32_t read_ret = lowfatfs_read_file(fs_ptr, file_content.data(), (uint32_t)file_content.size(), 1, fd);
-    assert(read_ret == LOWFATFS_OK);
-    lowfatfs_close_file(fs_ptr, fd);
-    if (read_ret != LOWFATFS_OK) {
-        TESTFS_DEBUGBREAK("[ tests ] failed to read file \"%s\" with code %d", filename.data(), read_ret);
-        return 0;
+    if (int32_t read = read_from_lowfat_fs_file_randomly(fs_ptr, fd, file_content); read < 0) {
+        user_debugbreak(LOWFATFS_CODELINE_TAG);
     }
+    else {
+        assert(static_cast<size_t>(read) == file_content.size());
+    }
+    lowfatfs_close_file(fs_ptr, fd);
     // file was successfully read, calculate crc32_ccit from its content
     uint32_t crc32_recalculated = crc32_ccit_update(file_content.data(), file_content.size(), CRC32_CCIT_DEFAULT_VALUE);
     assert(crc32_recalculated == crc);
@@ -804,15 +828,32 @@ size_t write_to_linkfs_file_randomly(linkfs_file_t* file_ptr, linkfs_memory_bloc
         RandomUint32Generator rand_gen;
         size_t bytes_to_write = block_ptr->size;
         size_t content_offset = 0;
-        size_t written = 0;
         while (bytes_to_write) {
             size_t portion_size = bytes_to_write > 1 ? rand_gen() % (bytes_to_write - 1) + 1 : 1;
             linkfs_memory_block_t portion { portion_size, block_ptr->data + content_offset};
-            written += linkfs_write_file(file_ptr, &portion, malloc_tag);
-            content_offset += portion_size;
+            content_offset += linkfs_write_file(file_ptr, &portion, malloc_tag);
             bytes_to_write -= portion_size;
         }
-        return written;
+        return content_offset;
+    }
+    return 0;
+}
+
+size_t read_from_linkfs_file_randomly(linkfs_file_t* file_ptr, linkfs_memory_block_t* block_ptr) {
+    assert(file_ptr);
+    assert(block_ptr);
+    if (file_ptr) {
+        // file should be open
+        RandomUint32Generator rand_gen;
+        size_t bytes_to_read = block_ptr->size;
+        size_t content_offset = 0;
+        while (bytes_to_read) {
+            size_t portion_size = bytes_to_read > 1 ? rand_gen() % (bytes_to_read - 1) + 1 : 1;
+            linkfs_memory_block_t portion{ portion_size, block_ptr->data + content_offset };
+            content_offset += linkfs_read_file(file_ptr, &portion);
+            bytes_to_read -= portion_size;
+        }
+        return content_offset;
     }
     return 0;
 }
@@ -881,8 +922,15 @@ void test_linkfs_randomized_single_file_rw(const float duration) {
         uint32_t crc = fill_random_memory_block_and_calc_crc32(block_ptr);
         size_t written = write_to_linkfs_file_randomly(file_ptr, block_ptr, LINKFS_MALLOC_TAG);
         assert(written == block_ptr->size);
-        linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
         assert(crc == file_ptr->props.crc);
+        linkfs_close_file(file_ptr);
+        file_ptr = linkfs_open_file(fs_ptr, "test_0.bin", 'r', LINKFS_MALLOC_TAG);
+        size_t read = read_from_linkfs_file_randomly(file_ptr, block_ptr);
+        assert(read == file_ptr->props.size);
+        linkfs_close_file(file_ptr);
+        uint32_t crc32_recalc = crc32_ccit_update(block_ptr->data, block_ptr->size, CRC32_CCIT_DEFAULT_VALUE);
+        assert(crc32_recalc == crc);
+        linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
         linkfs_remove_file(fs_ptr, file_ptr, LINKFS_FREE_TAG);
         min_random_file_block_size = min(min_random_file_block_size, cur_file_block_size);
         max_random_file_block_size = max(max_random_file_block_size, cur_file_block_size);
@@ -940,6 +988,12 @@ void test_linkfs_randomized_single_file_rewrite(const float duration) {
         size_t written = write_to_linkfs_file_randomly(file_ptr, block_ptr, LINKFS_MALLOC_TAG);
         linkfs_close_file(file_ptr);
         assert(written == block_ptr->size);
+        file_ptr = linkfs_open_file(fs_ptr, "test_0.bin", 'r', LINKFS_MALLOC_TAG);
+        size_t read = read_from_linkfs_file_randomly(file_ptr, block_ptr);
+        assert(read == file_ptr->props.size);
+        linkfs_close_file(file_ptr);
+        uint32_t crc32_recalc = crc32_ccit_update(block_ptr->data, block_ptr->size, CRC32_CCIT_DEFAULT_VALUE);
+        assert(crc32_recalc == crc);
         linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
         assert(crc == file_ptr->props.crc);
         if (uint32_t delete_chance = rand_gen() % 100; delete_chance < 10) {
@@ -998,6 +1052,7 @@ void test_linkfs_randomized_file_rw(const float duration) {
             uint32_t crc = fill_random_memory_block_and_calc_crc32(block_ptr);
             crcs.emplace_back(crc);
             size_t written = write_to_linkfs_file_randomly(file_ptr, block_ptr, LINKFS_MALLOC_TAG);
+            linkfs_close_file(file_ptr);
             assert(written == block_ptr->size);
             linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
             assert(crc == file_ptr->props.crc);
@@ -1016,6 +1071,14 @@ void test_linkfs_randomized_file_rw(const float duration) {
             uint32_t crc = crcs[file_idx];
             linkfs_file_t* file_ptr = linkfs_find_file(fs_ptr, filename.c_str());
             assert(file_ptr->props.crc == crc);
+            file_ptr = linkfs_open_file(fs_ptr, filename.c_str(), 'r', LINKFS_MALLOC_TAG);
+            linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(file_ptr->props.size, LINKFS_MALLOC_TAG);
+            size_t read = read_from_linkfs_file_randomly(file_ptr, block_ptr);
+            assert(read == file_ptr->props.size);
+            linkfs_close_file(file_ptr);
+            uint32_t crc32_recalc = crc32_ccit_update(block_ptr->data, block_ptr->size, CRC32_CCIT_DEFAULT_VALUE);
+            assert(crc32_recalc == crc);
+            linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
             linkfs_remove_file(fs_ptr, file_ptr, LINKFS_FREE_TAG);
             if (file_idx != filenames.size() - 1) {
                 filenames[file_idx] = filenames.back();
@@ -1156,7 +1219,14 @@ void test_linkfs_randomized_dump_rw(const float duration) {
         }
         // dump full fs and recreate
         for (size_t i = 0; i < filenames.size(); i++) {
-            const linkfs_file_t* const file_ptr = linkfs_find_file(fs_ptr, filenames[i].c_str());
+            linkfs_file_t* file_ptr = linkfs_open_file(fs_ptr, filenames[i].c_str(), 'r', LINKFS_MALLOC_TAG);
+            linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(file_ptr->props.size, LINKFS_MALLOC_TAG);
+            size_t read = read_from_linkfs_file_randomly(file_ptr, block_ptr);
+            assert(read == file_ptr->props.size);
+            linkfs_close_file(file_ptr);
+            uint32_t crc32_recalc = crc32_ccit_update(block_ptr->data, block_ptr->size, CRC32_CCIT_DEFAULT_VALUE);
+            assert(crc32_recalc == crcs[i]);
+            linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
             linkfs_cluster_t* cluster_ptr = file_ptr->start;
             size_t block_count = file_ptr->props.block_count;
             size_t calculated_block_count = 0;
@@ -1184,7 +1254,14 @@ void test_linkfs_randomized_dump_rw(const float duration) {
             size_t cur_file_idx = rand_gen() % file_remains;
             std::string filename = filenames[cur_file_idx];
             uint32_t crc = crcs[cur_file_idx];
-            linkfs_file_t* file_ptr = linkfs_find_file(fs_ptr, filename.c_str());
+            linkfs_file_t* file_ptr = linkfs_open_file(fs_ptr, filename.c_str(), 'r', LINKFS_MALLOC_TAG);
+            linkfs_memory_block_t* block_ptr = linkfs_create_memory_block(file_ptr->props.size, LINKFS_MALLOC_TAG);
+            size_t read = read_from_linkfs_file_randomly(file_ptr, block_ptr);
+            assert(read == file_ptr->props.size);
+            linkfs_close_file(file_ptr);
+            uint32_t crc32_recalc = crc32_ccit_update(block_ptr->data, block_ptr->size, CRC32_CCIT_DEFAULT_VALUE);
+            assert(crc32_recalc == crc);
+            linkfs_destroy_memory_block(block_ptr, LINKFS_FREE_TAG);
             assert(file_ptr->props.crc == crc);
             linkfs_remove_file(fs_ptr, file_ptr, LINKFS_FREE_TAG);
             if (cur_file_idx != filenames.size() - 1) {
@@ -1243,7 +1320,7 @@ void test_linkfs_dump_rw(){
     file_ptr = linkfs_open_file(fs_ptr, "test.bin", 'r', LINKFS_MALLOC_TAG);
     uint32_t rcrc = linkfs_calculate_crc(file_ptr);
     linkfs_memory_block_t* dumped_block_ptr = linkfs_create_memory_block(file_size, LINKFS_MALLOC_TAG);
-    size_t length_read = linkfs_read_file(file_ptr, dumped_block_ptr);
+    size_t length_read = read_from_linkfs_file_randomly(file_ptr, dumped_block_ptr);
     assert(length_read == file_size);
     for (size_t i = 0; i < file_size; i++) {
         assert(dumped_block_ptr->data[i] == block_ptr->data[i]);

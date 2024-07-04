@@ -7,8 +7,9 @@
 
 #define LOWFATFS_STRINGIFY(x) #x
 #define LOWFATFS_TO_STRING(x) LOWFATFS_STRINGIFY(x)
-#define LOWFATFS_MALLOC_TAG "Allocated in: " __FILE__ "(" LOWFATFS_TO_STRING(__LINE__)  ")"
-#define LOWFATFS_FREE_TAG "Freed in: " __FILE__ "(" LOWFATFS_TO_STRING(__LINE__)  ")"
+#define LOWFATFS_CODELINE_TAG __FILE__ "(" LOWFATFS_TO_STRING(__LINE__)  ")"
+#define LOWFATFS_MALLOC_TAG "Allocated in: " LOWFATFS_CODELINE_TAG
+#define LOWFATFS_FREE_TAG "Freed in: " LOWFATFS_CODELINE_TAG
 
 #ifdef __cplusplus
 extern "C" {
